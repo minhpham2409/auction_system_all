@@ -662,21 +662,26 @@ void handle_room_history(int client_socket, char *data) {
     sqlite3_stmt *stmt;
     
     // Query auctions user participated in
-    const char *sql = 
+   // Query auctions user participated in (both bid and buy_now)
+const char *sql = 
     "SELECT DISTINCT "
     "  a.auction_id, "
     "  a.title, "
     "  a.start_price, "
     "  a.current_price, "
-    "  COALESCE((SELECT u.username FROM users u WHERE u.user_id = a.winner_id), 'No winner') as winner, "
+    "  COALESCE("
+    "    (SELECT u.username FROM users u WHERE u.user_id = a.winner_id), "
+    "    (SELECT u.username FROM users u WHERE u.user_id = a.current_bidder_id), "
+    "    'No winner'"
+    "  ) as winner, "
     "  (SELECT COUNT(*) FROM bids WHERE auction_id = a.auction_id AND user_id = ?) as user_bid_count, "
     "  a.total_bids, "
     "  (SELECT COUNT(DISTINCT user_id) FROM bids WHERE auction_id = a.auction_id) as participant_count, "
     "  a.status, "
-    "  COALESCE(a.win_method, '-') as win_method "  // ← THÊM DÒNG NÀY
+    "  COALESCE(a.win_method, '-') as win_method "
     "FROM auctions a "
-    "INNER JOIN bids b ON a.auction_id = b.auction_id "
-    "WHERE b.user_id = ? "
+    "WHERE (a.auction_id IN (SELECT auction_id FROM bids WHERE user_id = ?) "
+    "       OR a.winner_id = ?) "  // ← SPACE Ở CUỐI!
     "ORDER BY a.end_time DESC";
     
     if (sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL) != SQLITE_OK) {
@@ -688,7 +693,8 @@ void handle_room_history(int client_socket, char *data) {
     }
     
     sqlite3_bind_int(stmt, 1, user_id);
-    sqlite3_bind_int(stmt, 2, user_id);
+sqlite3_bind_int(stmt, 2, user_id);
+sqlite3_bind_int(stmt, 3, user_id);  // ← THÊM!
     
     char response[BUFFER_SIZE * 4] = "AUCTION_HISTORY|";
     char temp[256];
