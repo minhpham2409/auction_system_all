@@ -8,6 +8,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <time.h>
+#include <stdlib.h> 
 
 void handle_register(int client_socket, char *data) {
     char username[50], password[100];
@@ -341,51 +342,116 @@ void handle_view_auction(int client_socket, char *data) {
         send(client_socket, response, strlen(response), 0);
     }
 }
-
 void handle_search_auctions(int client_socket, char *data) {
     SearchFilter filter;
     memset(&filter, 0, sizeof(SearchFilter));
     
+    // Initialize default values
     filter.min_price = -1;
     filter.max_price = -1;
     filter.min_time_left = -1;
     filter.max_time_left = -1;
     filter.room_id = -1;
-    sscanf(data, "%d|%[^|]|%lf|%lf",
-       &filter.room_id, filter.keyword, 
-       &filter.min_price, &filter.max_price);
+    filter.keyword[0] = '\0';
+    filter.status[0] = '\0';
+    
+    // Manual parsing for format: room_id|keyword|min_price|max_price
+    // This handles empty keyword case (||) which sscanf fails on
+    char *token;
+    char data_copy[1024];
+    strncpy(data_copy, data, sizeof(data_copy) - 1);
+    data_copy[sizeof(data_copy) - 1] = '\0';
+    
+    // Parse room_id (field 1)
+    token = strtok(data_copy, "|");
+    if (token) {
+        filter.room_id = atoi(token);
+    }
+    
+    // Parse keyword (field 2 - can be empty)
+    token = strtok(NULL, "|");
+    if (token) {
+        strncpy(filter.keyword, token, sizeof(filter.keyword) - 1);
+        filter.keyword[sizeof(filter.keyword) - 1] = '\0';
+    }
+    
+    // Parse min_price (field 3)
+    token = strtok(NULL, "|");
+    if (token) {
+        filter.min_price = atof(token);
+    }
+    
+    // Parse max_price (field 4)
+    token = strtok(NULL, "|");
+    if (token) {
+        filter.max_price = atof(token);
+    }
+    
+    // DEBUG LOGS
+    printf("[DEBUG] ===== SEARCH REQUEST =====\n");
+    printf("[DEBUG] Raw data: '%s'\n", data);
+    printf("[DEBUG] Parsed values:\n");
+    printf("[DEBUG]   Room ID: %d\n", filter.room_id);
+    printf("[DEBUG]   Keyword: '%s'\n", filter.keyword);
+    printf("[DEBUG]   Min price: %.2f\n", filter.min_price);
+    printf("[DEBUG]   Max price: %.2f\n", filter.max_price);
+    printf("[DEBUG] Filter conditions:\n");
+    printf("[DEBUG]   min_price >= 0? %s\n", filter.min_price >= 0 ? "YES" : "NO");
+    printf("[DEBUG]   max_price >= 0? %s\n", filter.max_price >= 0 ? "YES" : "NO");
+    printf("[DEBUG] =============================\n");
+    
+    // Set default status to search only active auctions
     strcpy(filter.status, "active");
+    
+    // Search database
     Auction results[MAX_AUCTIONS];
     int count = db_search_auctions(filter, results, MAX_AUCTIONS);
     
+    // Build response
     char response[BUFFER_SIZE * 4] = "SEARCH_RESULTS|";
     char temp[512];
     time_t now = time(NULL);
     
     for (int i = 0; i < count; i++) {
+        // Calculate time left for active auctions
         int time_left = 0;
         if (strcmp(results[i].status, "active") == 0) {
             time_left = results[i].end_time - now;
+            if (time_left < 0) time_left = 0;
         }
         
+        // Get seller info
         User seller;
-        db_get_user(results[i].seller_id, &seller);
+        if (db_get_user(results[i].seller_id, &seller) != 0) {
+            strcpy(seller.username, "Unknown");
+        }
         
+        // Get room info
         AuctionRoom room;
-        db_get_room(results[i].room_id, &room);
+        if (db_get_room(results[i].room_id, &room) != 0) {
+            strcpy(room.room_name, "Unknown");
+        }
         
+        // Format: auctionId;title;currentPrice;buyNowPrice;timeLeft;totalBids;status;seller;room
         sprintf(temp, "%d;%s;%.2f;%.2f;%d;%d;%s;%s;%s|",
-                results[i].auction_id, results[i].title,
-                results[i].current_price, results[i].buy_now_price,
-                time_left, results[i].total_bids, results[i].status,
-                seller.username, room.room_name);
+                results[i].auction_id, 
+                results[i].title,
+                results[i].current_price, 
+                results[i].buy_now_price,
+                time_left, 
+                results[i].total_bids, 
+                results[i].status,
+                seller.username, 
+                room.room_name);
         strcat(response, temp);
     }
     
+    // Send response
     strcat(response, "\n");
     send(client_socket, response, strlen(response), 0);
     
-    printf("[INFO] Search completed: %d results\n", count);
+    printf("[INFO] Search completed: %d results for user in room %d\n", 
+           count, filter.room_id);
 }void handle_place_bid(int client_socket, char *data) {
     int auction_id, user_id;
     double bid_amount;

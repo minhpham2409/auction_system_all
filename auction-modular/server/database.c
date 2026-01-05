@@ -446,6 +446,9 @@ int db_delete_auction(int auction_id, int user_id) {
 int db_search_auctions(SearchFilter filter, Auction results[], int max_results) {
     char sql[2048] = "SELECT * FROM auctions WHERE status != 'deleted'";
     
+     printf("[DB] ===== DATABASE SEARCH =====\n");
+    printf("[DB] Filter: room=%d, keyword='%s', min=%.2f, max=%.2f\n",
+           filter.room_id, filter.keyword, filter.min_price, filter.max_price);
     if (filter.room_id >= 0) {
         char temp[64];
         sprintf(temp, " AND room_id = %d", filter.room_id);
