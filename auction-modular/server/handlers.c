@@ -118,14 +118,15 @@ void handle_list_rooms(int client_socket) {
     sqlite3_stmt *stmt;
     // FIX: Đơn giản hóa query
     const char *sql = 
-        "SELECT a.auction_id, a.title, a.start_price, a.current_price, "
-        "  COALESCE((SELECT u.username FROM users u WHERE u.user_id = a.current_bidder_id), 'No winner') as winner, "
-        "  a.total_bids, "
-        "  (SELECT COUNT(DISTINCT user_id) FROM bids b WHERE b.auction_id = a.auction_id) as participant_count, "
-        "  a.status "
-        "FROM auctions a "
-        "WHERE a.seller_id = ? "
-        "ORDER BY a.end_time DESC";
+    "SELECT a.auction_id, a.title, a.start_price, a.current_price, "
+    "  COALESCE((SELECT u.username FROM users u WHERE u.user_id =  a.winner_id), 'No winner') as winner, "
+    "  a.total_bids, "
+    "  (SELECT COUNT(DISTINCT user_id) FROM bids b WHERE b.auction_id = a.auction_id) as participant_count, "
+    "  a.status, "
+    "  COALESCE(a.win_method, '-') as win_method "  // ← THÊM DÒNG NÀY
+    "FROM auctions a "
+    "WHERE a.seller_id = ? "
+    "ORDER BY a.end_time DESC";
     
     if (sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL) != SQLITE_OK) {
         printf("[ERROR] SQL prepare failed: %s\n", sqlite3_errmsg(g_db));
@@ -140,24 +141,24 @@ void handle_list_rooms(int client_socket) {
     char response[BUFFER_SIZE * 4] = "SELLER_HISTORY|";
     char temp[256];
     int count = 0;
-    
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-        int auction_id = sqlite3_column_int(stmt, 0);
-        const char *title = (const char*)sqlite3_column_text(stmt, 1);
-        double start_price = sqlite3_column_double(stmt, 2);
-        double final_price = sqlite3_column_double(stmt, 3);
-        const char *winner = (const char*)sqlite3_column_text(stmt, 4);
-        int total_bids = sqlite3_column_int(stmt, 5);
-        int participants = sqlite3_column_int(stmt, 6);
-        const char *status = (const char*)sqlite3_column_text(stmt, 7);
-        
-        // Format: auctionId;title;startPrice;finalPrice;winner;totalBids;participants;status
-        sprintf(temp, "%d;%s;%.2f;%.2f;%s;%d;%d;%s|",
-                auction_id, title, start_price, final_price, winner, 
-                total_bids, participants, status);
-        strcat(response, temp);
-        count++;
-    }
+    int auction_id = sqlite3_column_int(stmt, 0);
+    const char *title = (const char*)sqlite3_column_text(stmt, 1);
+    double start_price = sqlite3_column_double(stmt, 2);
+    double final_price = sqlite3_column_double(stmt, 3);
+    const char *winner = (const char*)sqlite3_column_text(stmt, 4);
+    int total_bids = sqlite3_column_int(stmt, 5);
+    int participants = sqlite3_column_int(stmt, 6);
+    const char *status = (const char*)sqlite3_column_text(stmt, 7);
+    const char *win_method = (const char*)sqlite3_column_text(stmt, 8);  // ← THÊM DÒNG NÀY
+    
+    // Format: auctionId;title;startPrice;finalPrice;winner;totalBids;participants;status;winMethod
+    sprintf(temp, "%d;%s;%.2f;%.2f;%s;%d;%d;%s;%s|",  // ← Thêm %s
+            auction_id, title, start_price, final_price, winner, 
+            total_bids, participants, status, win_method);  // ← Thêm win_method
+    strcat(response, temp);
+    count++;
+}
     
     sqlite3_finalize(stmt);
     strcat(response, "\n");
@@ -605,15 +606,16 @@ void handle_room_history(int client_socket, char *data) {
     
     sqlite3_stmt *stmt;
     const char *sql = 
-        "SELECT a.auction_id, a.title, a.start_price, a.current_price, "
-        "  COALESCE((SELECT u.username FROM users u WHERE u.user_id = a.current_bidder_id), 'No winner') as winner, "
-        "  a.total_bids, "
-        "  (SELECT COUNT(DISTINCT user_id) FROM bids b WHERE b.auction_id = a.auction_id) as participant_count, "
-        "  a.status, "
-        "  COALESCE((SELECT u.username FROM users u WHERE u.user_id = a.seller_id), 'Unknown') as seller "
-        "FROM auctions a "
-        "WHERE a.room_id = ? AND a.status = 'ended' "
-        "ORDER BY a.end_time DESC";
+    "SELECT a.auction_id, a.title, a.start_price, a.current_price, "
+    "  COALESCE((SELECT u.username FROM users u WHERE u.user_id = a.winner_id), 'No winner') as winner, "
+    "  a.total_bids, "
+    "  (SELECT COUNT(DISTINCT user_id) FROM bids b WHERE b.auction_id = a.auction_id) as participant_count, "
+    "  a.status, "
+    "  COALESCE((SELECT u.username FROM users u WHERE u.user_id = a.seller_id), 'Unknown') as seller, "
+    "  COALESCE(a.win_method, '-') as win_method "  // ← THÊM DÒNG NÀY
+    "FROM auctions a "
+    "WHERE a.room_id = ? AND a.status = 'ended' "
+    "ORDER BY a.end_time DESC";
     
     if (sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL) != SQLITE_OK) {
         printf("[ERROR] SQL prepare failed: %s\n", sqlite3_errmsg(g_db));
@@ -628,25 +630,25 @@ void handle_room_history(int client_socket, char *data) {
     char response[BUFFER_SIZE * 4] = "ROOM_HISTORY|";
     char temp[256];
     int count = 0;
+   while (sqlite3_step(stmt) == SQLITE_ROW) {
+    int auction_id = sqlite3_column_int(stmt, 0);
+    const char *title = (const char*)sqlite3_column_text(stmt, 1);
+    double start_price = sqlite3_column_double(stmt, 2);
+    double final_price = sqlite3_column_double(stmt, 3);
+    const char *winner = (const char*)sqlite3_column_text(stmt, 4);
+    int total_bids = sqlite3_column_int(stmt, 5);
+    int participants = sqlite3_column_int(stmt, 6);
+    const char *status = (const char*)sqlite3_column_text(stmt, 7);
+    const char *seller = (const char*)sqlite3_column_text(stmt, 8);
+    const char *win_method = (const char*)sqlite3_column_text(stmt, 9);  // ← THÊM DÒNG NÀY
     
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        int auction_id = sqlite3_column_int(stmt, 0);
-        const char *title = (const char*)sqlite3_column_text(stmt, 1);
-        double start_price = sqlite3_column_double(stmt, 2);
-        double final_price = sqlite3_column_double(stmt, 3);
-        const char *winner = (const char*)sqlite3_column_text(stmt, 4);
-        int total_bids = sqlite3_column_int(stmt, 5);
-        int participants = sqlite3_column_int(stmt, 6);
-        const char *status = (const char*)sqlite3_column_text(stmt, 7);
-        const char *seller = (const char*)sqlite3_column_text(stmt, 8);
-        
-        // Format: auctionId;title;startPrice;finalPrice;winner;totalBids;participants;status;seller
-        sprintf(temp, "%d;%s;%.2f;%.2f;%s;%d;%d;%s;%s|",
-                auction_id, title, start_price, final_price, winner, 
-                total_bids, participants, status, seller);
-        strcat(response, temp);
-        count++;
-    }
+    // Format: auctionId;title;startPrice;finalPrice;winner;totalBids;participants;status;seller;winMethod
+    sprintf(temp, "%d;%s;%.2f;%.2f;%s;%d;%d;%s;%s;%s|",  // ← Thêm %s
+            auction_id, title, start_price, final_price, winner, 
+            total_bids, participants, status, seller, win_method);  // ← Thêm win_method
+    strcat(response, temp);
+    count++;
+}
     
     sqlite3_finalize(stmt);
     strcat(response, "\n");
@@ -661,20 +663,21 @@ void handle_room_history(int client_socket, char *data) {
     
     // Query auctions user participated in
     const char *sql = 
-        "SELECT DISTINCT "
-        "  a.auction_id, "
-        "  a.title, "
-        "  a.start_price, "
-        "  a.current_price, "
-        "  COALESCE((SELECT u.username FROM users u WHERE u.user_id = a.current_bidder_id), 'No winner') as winner, "
-        "  (SELECT COUNT(*) FROM bids WHERE auction_id = a.auction_id AND user_id = ?) as user_bid_count, "
-        "  a.total_bids, "
-        "  (SELECT COUNT(DISTINCT user_id) FROM bids WHERE auction_id = a.auction_id) as participant_count, "
-        "  a.status "
-        "FROM auctions a "
-        "INNER JOIN bids b ON a.auction_id = b.auction_id "
-        "WHERE b.user_id = ? "
-        "ORDER BY a.end_time DESC";
+    "SELECT DISTINCT "
+    "  a.auction_id, "
+    "  a.title, "
+    "  a.start_price, "
+    "  a.current_price, "
+    "  COALESCE((SELECT u.username FROM users u WHERE u.user_id = a.winner_id), 'No winner') as winner, "
+    "  (SELECT COUNT(*) FROM bids WHERE auction_id = a.auction_id AND user_id = ?) as user_bid_count, "
+    "  a.total_bids, "
+    "  (SELECT COUNT(DISTINCT user_id) FROM bids WHERE auction_id = a.auction_id) as participant_count, "
+    "  a.status, "
+    "  COALESCE(a.win_method, '-') as win_method "  // ← THÊM DÒNG NÀY
+    "FROM auctions a "
+    "INNER JOIN bids b ON a.auction_id = b.auction_id "
+    "WHERE b.user_id = ? "
+    "ORDER BY a.end_time DESC";
     
     if (sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL) != SQLITE_OK) {
         printf("[ERROR] SQL prepare failed: %s\n", sqlite3_errmsg(g_db));
@@ -690,25 +693,25 @@ void handle_room_history(int client_socket, char *data) {
     char response[BUFFER_SIZE * 4] = "AUCTION_HISTORY|";
     char temp[256];
     int count = 0;
-    
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-        int auction_id = sqlite3_column_int(stmt, 0);
-        const char *title = (const char*)sqlite3_column_text(stmt, 1);
-        double start_price = sqlite3_column_double(stmt, 2);
-        double final_price = sqlite3_column_double(stmt, 3);
-        const char *winner = (const char*)sqlite3_column_text(stmt, 4);
-        int user_bid_count = sqlite3_column_int(stmt, 5);
-        int total_bids = sqlite3_column_int(stmt, 6);
-        int participants = sqlite3_column_int(stmt, 7);
-        const char *status = (const char*)sqlite3_column_text(stmt, 8);
-        
-        // Format: auctionId;title;startPrice;finalPrice;winner;userBidCount;totalBids;participants;status
-        sprintf(temp, "%d;%s;%.2f;%.2f;%s;%d;%d;%d;%s|",
-                auction_id, title, start_price, final_price, winner,
-                user_bid_count, total_bids, participants, status);
-        strcat(response, temp);
-        count++;
-    }
+    int auction_id = sqlite3_column_int(stmt, 0);
+    const char *title = (const char*)sqlite3_column_text(stmt, 1);
+    double start_price = sqlite3_column_double(stmt, 2);
+    double final_price = sqlite3_column_double(stmt, 3);
+    const char *winner = (const char*)sqlite3_column_text(stmt, 4);
+    int user_bid_count = sqlite3_column_int(stmt, 5);
+    int total_bids = sqlite3_column_int(stmt, 6);
+    int participants = sqlite3_column_int(stmt, 7);
+    const char *status = (const char*)sqlite3_column_text(stmt, 8);
+    const char *win_method = (const char*)sqlite3_column_text(stmt, 9);  // ← THÊM DÒNG NÀY
+    
+    // Format: auctionId;title;startPrice;finalPrice;winner;userBidCount;totalBids;participants;status;winMethod
+    sprintf(temp, "%d;%s;%.2f;%.2f;%s;%d;%d;%d;%s;%s|",  // ← Thêm %s
+            auction_id, title, start_price, final_price, winner,
+            user_bid_count, total_bids, participants, status, win_method);  // ← Thêm win_method
+    strcat(response, temp);
+    count++;
+}
     
     sqlite3_finalize(stmt);
     strcat(response, "\n");

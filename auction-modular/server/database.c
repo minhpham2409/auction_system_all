@@ -665,11 +665,11 @@ int db_buy_now(int auction_id, int user_id) {
         sqlite3_exec(g_db, "ROLLBACK;", NULL, NULL, NULL);
         return -3;
     }
-    
-    sql = "UPDATE auctions SET status = 'ended', winner_id = ?, win_method = 'buy_now' WHERE auction_id = ?";
-    sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
-    sqlite3_bind_int(stmt, 1, user_id);
-    sqlite3_bind_int(stmt, 2, auction_id);
+    sql = "UPDATE auctions SET status = 'ended', current_price = ?, winner_id = ?, win_method = 'buy_now' WHERE auction_id = ?";
+sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
+sqlite3_bind_double(stmt, 1, buy_now_price);  // ← Thêm dòng này
+sqlite3_bind_int(stmt, 2, user_id);           // ← Index đổi từ 1 → 2
+sqlite3_bind_int(stmt, 3, auction_id);        // ← Index đổi từ 2 → 3
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     

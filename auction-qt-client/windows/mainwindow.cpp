@@ -552,12 +552,12 @@ void MainWindow::on_viewRoomHistoryButton_clicked()
     layout->addWidget(title);
     
     // Table - 9 columns
-    QTableWidget *table = new QTableWidget(auctions.size(), 9, dialog);
-    table->setHorizontalHeaderLabels({
-        "#", "🏷️ Sản phẩm", "💵 Giá KĐ", "💰 Giá cuối", 
-        "👤 Người thắng", "📊 Tổng lượt", "👥 Người tham gia", 
-        "👨‍💼 Chủ đấu giá", "📈 Kết quả"
-    });
+   QTableWidget *table = new QTableWidget(auctions.size(), 10, dialog);  // 9 → 10
+table->setHorizontalHeaderLabels({
+    "#", "🏷️ Sản phẩm", "💵 Giá KĐ", "💰 Giá cuối", 
+    "👤 Người thắng", "📊 Tổng lượt", "👥 Người tham gia", 
+    "👨‍💼 Chủ đấu giá", "📈 Kết quả", "🎯 Phương thức"  // ← THÊM CỘT MỚI
+});
     table->setStyleSheet(
         "QTableWidget { background: white; border: 2px solid #e0e0e0; "
         "border-radius: 10px; font-size: 13px; } "
@@ -581,15 +581,16 @@ void MainWindow::on_viewRoomHistoryButton_clicked()
         qDebug() << "Row" << row << "fields:" << fields.size() << fields;
         
         // Server format: auctionId;title;startPrice;finalPrice;winner;totalBids;participants;status;seller
-        if (fields.size() >= 9) {
-            QString auctionTitle = fields[1];
-            double startPrice = fields[2].toDouble();
-            double finalPrice = fields[3].toDouble();
-            QString winner = fields[4];
-            int auctionTotalBids = fields[5].toInt();
-            int participants = fields[6].toInt();
-            // QString status = fields[7];
-            QString seller = fields[8];
+        if (fields.size() >= 10) {  // 9 → 10
+    QString auctionTitle = fields[1];
+    double startPrice = fields[2].toDouble();
+    double finalPrice = fields[3].toDouble();
+    QString winner = fields[4];
+    int auctionTotalBids = fields[5].toInt();
+    int participants = fields[6].toInt();
+    QString status = fields[7];
+    QString seller = fields[8];
+    QString winMethod = fields[9];  // ← THÊM DÒNG MỚI
             
             bool sold = (winner != "No winner");
             if (sold) {
@@ -645,6 +646,31 @@ void MainWindow::on_viewRoomHistoryButton_clicked()
             resultItem->setForeground(sold ? QColor("#4caf50") : QColor("#f44336"));
             resultItem->setTextAlignment(Qt::AlignCenter);
             table->setItem(row, 8, resultItem);
+            // Column 9: Win Method (THÊM MỚI)
+            QString methodDisplay;
+            QColor methodColor;
+            if (status == "ended") {
+                if (winMethod == "buy_now") {
+                    methodDisplay = "💳 Mua ngay";
+                    methodColor = QColor("#4caf50");  // Green
+                } else if (winMethod == "bid") {
+                    methodDisplay = "⚡ Đấu giá";
+                    methodColor = QColor("#2196f3");  // Blue
+                } else {
+                    methodDisplay = "-";
+                    methodColor = QColor("#757575");  // Gray
+                }
+            } else {
+                methodDisplay = "⏳ Chưa kết thúc";
+                methodColor = QColor("#ff9800");  // Orange
+            }
+            
+            QTableWidgetItem *methodItem = new QTableWidgetItem(methodDisplay);
+            methodItem->setForeground(methodColor);
+            methodItem->setFont(QFont("Arial", 10, QFont::Bold));
+            methodItem->setTextAlignment(Qt::AlignCenter);
+            table->setItem(row, 9, methodItem);
+            
             
             row++;
         }
@@ -1112,12 +1138,12 @@ void MainWindow::onAuctionHistoryReceived(const QString& history)
     layout->addWidget(title);
     
     // Table
-    QTableWidget *table = new QTableWidget(auctions.size(), 9, dialog);
-    table->setHorizontalHeaderLabels({
-        "#", "🏷️ Sản phẩm", "💵 Giá KĐ", "💰 Giá cuối", 
-        "👤 Người thắng", "🎯 Lượt của bạn", "📊 Tổng lượt", 
-        "👥 Người tham gia", "🏆 Kết quả"
-    });
+   QTableWidget *table = new QTableWidget(auctions.size(), 10, dialog);  // 9 → 10
+table->setHorizontalHeaderLabels({
+    "#", "🏷️ Sản phẩm", "💵 Giá KĐ", "💰 Giá cuối", 
+    "👤 Người thắng", "🎯 Lượt của bạn", "📊 Tổng lượt", 
+    "👥 Người tham gia", "🏆 Kết quả", "🎯 Phương thức"  // ← THÊM CỘT MỚI
+});
     table->setStyleSheet(
         "QTableWidget { background: white; border: 2px solid #e0e0e0; "
         "border-radius: 10px; font-size: 13px; } "
@@ -1139,24 +1165,35 @@ void MainWindow::onAuctionHistoryReceived(const QString& history)
         QStringList fields = auctionData.split(';');
         
         // Server format: auctionId;title;startPrice;finalPrice;winner;userBidCount;totalBids;participants;status
-        if (fields.size() >= 9) {
-            // int auctionId = fields[0].toInt();
-            QString auctionTitle = fields[1];
-            double startPrice = fields[2].toDouble();
-            double finalPrice = fields[3].toDouble();
-            QString winner = fields[4];
-            int userBidCount = fields[5].toInt();
-            int totalBids = fields[6].toInt();
-            int participantCount = fields[7].toInt();
-            // QString status = fields[8];
-            
-            bool userWon = (winner == currentUser.username);
-            if (userWon) {
-                wonCount++;
-                totalSpent += finalPrice;
-            } else {
-                lostCount++;
-            }
+       if (fields.size() >= 10) {  // 9 → 10
+    // int auctionId = fields[0].toInt();
+    QString auctionTitle = fields[1];
+    double startPrice = fields[2].toDouble();
+    double finalPrice = fields[3].toDouble();
+    QString winner = fields[4];
+    int userBidCount = fields[5].toInt();
+    int totalBids = fields[6].toInt();
+    int participantCount = fields[7].toInt();
+    QString status = fields[8];
+    QString winMethod = fields[9];  // ← THÊM DÒNG MỚI
+           // Check if auction actually sold
+bool sold = false;
+if (status == "ended") {
+    if (winMethod == "buy_now" || winMethod == "bid") {
+        sold = true;
+    } else if (winner != "No winner" && !winner.isEmpty()) {
+        sold = true;
+    }
+}
+
+// Only count if auction was sold
+bool userWon = sold && (winner == currentUser.username);
+if (userWon) {
+    wonCount++;
+    totalSpent += finalPrice;
+} else if (sold) {  // ← CHỈ count loss nếu auction thực sự bán cho người khác
+    lostCount++;
+}
             totalBidsPlaced += userBidCount;
             
             // #
@@ -1211,6 +1248,32 @@ void MainWindow::onAuctionHistoryReceived(const QString& history)
             resultItem->setForeground(userWon ? QColor("#4caf50") : QColor("#f57c00"));
             resultItem->setTextAlignment(Qt::AlignCenter);
             table->setItem(row, 8, resultItem);
+            
+            // Column 9: Win Method (THÊM MỚI)
+            QString methodDisplay;
+            QColor methodColor;
+            if (status == "ended") {
+                if (winMethod == "buy_now") {
+                    methodDisplay = "💳 Mua ngay";
+                    methodColor = QColor("#4caf50");  // Green
+                } else if (winMethod == "bid") {
+                    methodDisplay = "⚡ Đấu giá";
+                    methodColor = QColor("#2196f3");  // Blue
+                } else {
+                    methodDisplay = "-";
+                    methodColor = QColor("#757575");  // Gray
+                }
+            } else {
+                methodDisplay = "⏳ Chưa kết thúc";
+                methodColor = QColor("#ff9800");  // Orange
+            }
+            
+            QTableWidgetItem *methodItem = new QTableWidgetItem(methodDisplay);
+            methodItem->setForeground(methodColor);
+            methodItem->setFont(QFont("Arial", 10, QFont::Bold));
+            methodItem->setTextAlignment(Qt::AlignCenter);
+            table->setItem(row, 9, methodItem);
+            
             
             row++;
         }
@@ -1287,13 +1350,12 @@ void MainWindow::on_viewSellerHistoryButton_clicked()
     );
     title->setAlignment(Qt::AlignCenter);
     layout->addWidget(title);
-    
-    // Table
-    QTableWidget *table = new QTableWidget(auctions.size(), 8, dialog);
-    table->setHorizontalHeaderLabels({
-        "#", "🏷️ Sản phẩm", "💵 Giá KĐ", "💰 Giá cuối", 
-        "👤 Người thắng", "📊 Tổng lượt", "👥 Người tham gia", "📈 Trạng thái"
-    });
+    QTableWidget *table = new QTableWidget(auctions.size(), 9, dialog);  // 8 → 9
+table->setHorizontalHeaderLabels({
+    "#", "🏷️ Sản phẩm", "💵 Giá KĐ", "💰 Giá cuối", 
+    "👤 Người thắng", "📊 Tổng lượt", "👥 Người tham gia", "📈 Trạng thái",
+    "🎯 Phương thức"  // ← THÊM CỘT MỚI
+});
     table->setStyleSheet(
         "QTableWidget { background: white; border: 2px solid #e0e0e0; "
         "border-radius: 10px; font-size: 13px; } "
@@ -1317,14 +1379,15 @@ void MainWindow::on_viewSellerHistoryButton_clicked()
         qDebug() << "Row" << row << "fields:" << fields.size() << fields;
         
         // Server format: auctionId;title;startPrice;finalPrice;winner;totalBids;participants;status
-        if (fields.size() >= 8) {
-            QString auctionTitle = fields[1];
-            double startPrice = fields[2].toDouble();
-            double finalPrice = fields[3].toDouble();
-            QString winner = fields[4];
-            int auctionTotalBids = fields[5].toInt();
-            int participants = fields[6].toInt();
-            // QString status = fields[7];
+       if (fields.size() >= 9) {  // 8 → 9
+    QString auctionTitle = fields[1];
+    double startPrice = fields[2].toDouble();
+    double finalPrice = fields[3].toDouble();
+    QString winner = fields[4];
+    int auctionTotalBids = fields[5].toInt();
+    int participants = fields[6].toInt();
+    QString status = fields[7];
+    QString winMethod = fields[8];  // ← THÊM DÒNG MỚI
             
             bool sold = (winner != "No winner");
             if (sold) {
@@ -1374,6 +1437,29 @@ void MainWindow::on_viewSellerHistoryButton_clicked()
             statusItem->setTextAlignment(Qt::AlignCenter);
             table->setItem(row, 7, statusItem);
             
+            QString methodDisplay;
+            QColor methodColor;
+            if (status == "ended") {
+                if (winMethod == "buy_now") {
+                    methodDisplay = "💳 Mua ngay";
+                    methodColor = QColor("#4caf50");  // Green
+                } else if (winMethod == "bid") {
+                    methodDisplay = "⚡ Đấu giá";
+                    methodColor = QColor("#2196f3");  // Blue
+                } else {
+                    methodDisplay = "-";
+                    methodColor = QColor("#757575");  // Gray
+                }
+            } else {
+                methodDisplay = "⏳ Chưa kết thúc";
+                methodColor = QColor("#ff9800");  // Orange
+            }
+            
+            QTableWidgetItem *methodItem = new QTableWidgetItem(methodDisplay);
+            methodItem->setForeground(methodColor);
+            methodItem->setFont(QFont("Arial", 10, QFont::Bold));
+            methodItem->setTextAlignment(Qt::AlignCenter);
+            table->setItem(row, 8, methodItem);
             row++;
         }
     }
