@@ -60,7 +60,7 @@ signals:
     void connected();
     void disconnected();
     void connectionError(const QString& error);
-    
+    void searchResultsReceived(const QString& results); 
     // Response signals
     void loginSuccess(User user);
     void loginFailed(const QString& reason);

@@ -351,12 +351,10 @@ void handle_search_auctions(int client_socket, char *data) {
     filter.min_time_left = -1;
     filter.max_time_left = -1;
     filter.room_id = -1;
-    
-    sscanf(data, "%[^|]|%lf|%lf|%d|%d|%[^|]|%d",
-           filter.keyword, &filter.min_price, &filter.max_price,
-           &filter.min_time_left, &filter.max_time_left,
-           filter.status, &filter.room_id);
-    
+    sscanf(data, "%d|%[^|]|%lf|%lf",
+       &filter.room_id, filter.keyword, 
+       &filter.min_price, &filter.max_price);
+    strcpy(filter.status, "active");
     Auction results[MAX_AUCTIONS];
     int count = db_search_auctions(filter, results, MAX_AUCTIONS);
     

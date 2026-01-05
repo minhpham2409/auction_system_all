@@ -38,6 +38,7 @@ private slots:
     void on_createAuctionButton_clicked();
     void on_viewAuctionDetailsButton_clicked();
     void on_placeBidButton_clicked();
+     void onSearchResultsReceived(const QString& results);
     void on_buyNowButton_clicked();
     void on_deleteAuctionButton_clicked();
     void on_activateAuctionButton_clicked();

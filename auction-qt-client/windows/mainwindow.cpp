@@ -36,6 +36,7 @@ MainWindow::MainWindow(NetworkManager *net, const User& user, QWidget *parent)
     
     
     // Connect ALL signals
+    connect(network, &NetworkManager::searchResultsReceived, this, &MainWindow::onSearchResultsReceived);
     connect(network, &NetworkManager::sellerHistoryReceived,  // ← THÊM
         this, &MainWindow::onSellerHistoryReceived);
     connect(network, &NetworkManager::roomHistoryReceived,    // ← THÊM
@@ -849,22 +850,97 @@ void MainWindow::on_activateAuctionButton_clicked()
     }
     
     network->sendActivateAuction(auction.auctionId, currentUser.userId);
-}
-void MainWindow::on_searchAuctionsButton_clicked()
+}void MainWindow::on_searchAuctionsButton_clicked()
 {
     if (!currentUser.isInRoom()) {
         showError("Lỗi", "Vào phòng trước");
         return;
     }
     
-    bool ok;
-    QString keyword = QInputDialog::getText(this, "Tìm kiếm", 
-                                           "Nhập từ khóa:", 
-                                           QLineEdit::Normal, "", &ok);
+    // Create search dialog
+    QDialog dialog(this);
+    dialog.setWindowTitle("🔍 TÌM KIẾM ĐẤU GIÁ");
+    dialog.setMinimumWidth(400);
     
-    if (ok && !keyword.isEmpty()) {
-        network->sendSearchAuctions(currentUser.currentRoomId, keyword, -1, -1);
-        addLogMessage(QString("🔍 Tìm: %1").arg(keyword), "INFO");
+    QVBoxLayout *layout = new QVBoxLayout(&dialog);
+    
+    // Keyword input
+    QLabel *keywordLabel = new QLabel("Từ khóa:");
+    keywordLabel->setStyleSheet("font-weight: bold;");
+    QLineEdit *keywordEdit = new QLineEdit();
+    keywordEdit->setPlaceholderText("Nhập tên sản phẩm...");
+    
+    // Min price input
+    QLabel *minPriceLabel = new QLabel("Giá tối thiểu (VND):");
+    minPriceLabel->setStyleSheet("font-weight: bold;");
+    QLineEdit *minPriceEdit = new QLineEdit();
+    minPriceEdit->setPlaceholderText("Để trống = không giới hạn");
+    
+    // Max price input
+    QLabel *maxPriceLabel = new QLabel("Giá tối đa (VND):");
+    maxPriceLabel->setStyleSheet("font-weight: bold;");
+    QLineEdit *maxPriceEdit = new QLineEdit();
+    maxPriceEdit->setPlaceholderText("Để trống = không giới hạn");
+    
+    // Buttons
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    QPushButton *searchBtn = new QPushButton("🔍 Tìm kiếm");
+    QPushButton *cancelBtn = new QPushButton("❌ Hủy");
+    
+    searchBtn->setStyleSheet(
+        "QPushButton { background: #4CAF50; color: white; padding: 10px; "
+        "border-radius: 5px; font-weight: bold; }"
+        "QPushButton:hover { background: #45a049; }");
+    cancelBtn->setStyleSheet(
+        "QPushButton { background: #f44336; color: white; padding: 10px; "
+        "border-radius: 5px; font-weight: bold; }"
+        "QPushButton:hover { background: #da190b; }");
+    
+    buttonLayout->addWidget(searchBtn);
+    buttonLayout->addWidget(cancelBtn);
+    
+    // Add to layout
+    layout->addWidget(keywordLabel);
+    layout->addWidget(keywordEdit);
+    layout->addSpacing(10);
+    layout->addWidget(minPriceLabel);
+    layout->addWidget(minPriceEdit);
+    layout->addSpacing(10);
+    layout->addWidget(maxPriceLabel);
+    layout->addWidget(maxPriceEdit);
+    layout->addSpacing(20);
+    layout->addLayout(buttonLayout);
+    
+    // Connect buttons
+    connect(searchBtn, &QPushButton::clicked, &dialog, &QDialog::accept);
+    connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);
+    
+    // Show dialog
+    if (dialog.exec() == QDialog::Accepted) {
+        QString keyword = keywordEdit->text().trimmed();
+        
+        // Parse prices
+        double minPrice = -1;
+        double maxPrice = -1;
+        
+        if (!minPriceEdit->text().isEmpty()) {
+            minPrice = minPriceEdit->text().toDouble();
+        }
+        if (!maxPriceEdit->text().isEmpty()) {
+            maxPrice = maxPriceEdit->text().toDouble();
+        }
+        
+        // Send search request
+        network->sendSearchAuctions(currentUser.currentRoomId, keyword, minPrice, maxPrice);
+        
+        // Log
+        QString logMsg = QString("🔍 Tìm: \"%1\"").arg(keyword.isEmpty() ? "tất cả" : keyword);
+        if (minPrice > 0 || maxPrice > 0) {
+            logMsg += QString(" [Giá: %1-%2]")
+                .arg(minPrice > 0 ? QString::number((int)minPrice) : "∞")
+                .arg(maxPrice > 0 ? QString::number((int)maxPrice) : "∞");
+        }
+        addLogMessage(logMsg, "INFO");
     }
 }
 
@@ -1040,8 +1116,130 @@ void MainWindow::onAuctionListReceived(const QList<Auction>& newAuctions)
             }
         }
     }
+}void MainWindow::onSearchResultsReceived(const QString& results)
+{
+    qDebug() << "========================================";
+    qDebug() << "[MAINWINDOW] onSearchResultsReceived CALLED!";
+    qDebug() << "[MAINWINDOW] Results:" << results;
+    qDebug() << "[MAINWINDOW] Results length:" << results.length();
+    qDebug() << "========================================";
+    
+    if (results.isEmpty()) {
+        qDebug() << "[MAINWINDOW] Results is EMPTY!";
+        QMessageBox::information(this, "Kết quả tìm kiếm", 
+            "❌ Không tìm thấy sản phẩm nào phù hợp");
+        return;
+    }
+    
+    QStringList auctions = results.split('|', Qt::SkipEmptyParts);
+    qDebug() << "[MAINWINDOW] Number of auctions:" << auctions.size();
+    
+    // Create results dialog
+    QDialog *dialog = new QDialog(this);
+    dialog->setWindowTitle("🔍 KẾT QUẢ TÌM KIẾM");
+    dialog->setMinimumSize(1000, 500);
+    
+    QVBoxLayout *layout = new QVBoxLayout(dialog);
+    
+    // Title
+    QLabel *title = new QLabel(QString("✅ Tìm thấy %1 sản phẩm").arg(auctions.size()));
+    title->setStyleSheet(
+        "font-size: 18px; font-weight: bold; color: #4CAF50; "
+        "padding: 15px; background: white; border-radius: 8px;"
+    );
+    title->setAlignment(Qt::AlignCenter);
+    layout->addWidget(title);
+    
+    // Table
+    QTableWidget *table = new QTableWidget(auctions.size(), 8, dialog);
+    table->setHorizontalHeaderLabels({
+        "#", "🏷️ Sản phẩm", "💵 Giá hiện tại", "💰 Mua ngay", 
+        "⏰ Thời gian", "📊 Lượt đấu", "📍 Trạng thái", "👤 Người bán"
+    });
+    
+    table->setStyleSheet(
+        "QTableWidget { background: white; border: 2px solid #e0e0e0; "
+        "border-radius: 10px; font-size: 13px; } "
+        "QHeaderView::section { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+        "stop:0 #2196F3, stop:1 #1976D2); color: white; padding: 10px; "
+        "font-weight: bold; border: none; }"
+    );
+    
+    table->verticalHeader()->setVisible(false);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setAlternatingRowColors(true);
+    
+    // Fill table
+    int row = 0;
+    for (const QString& auctionData : auctions) {
+        QStringList fields = auctionData.split(';');
+        
+        qDebug() << "[MAINWINDOW] Auction fields:" << fields;
+        
+        if (fields.size() >= 8) {
+            QString title = fields[1];
+            double currentPrice = fields[2].toDouble();
+            double buyNowPrice = fields[3].toDouble();
+            int timeLeft = fields[4].toInt();
+            int totalBids = fields[5].toInt();
+            QString status = fields[6];
+            QString seller = fields[7];
+            
+            table->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
+            
+            QTableWidgetItem *titleItem = new QTableWidgetItem(title);
+            titleItem->setFont(QFont("Arial", 11, QFont::Bold));
+            table->setItem(row, 1, titleItem);
+            
+            table->setItem(row, 2, new QTableWidgetItem(
+                Formatters::formatCurrency(currentPrice)));
+            
+            QString buyNowText = (buyNowPrice > 0) ? 
+                Formatters::formatCurrency(buyNowPrice) : "-";
+            table->setItem(row, 3, new QTableWidgetItem(buyNowText));
+            
+            QString timeText;
+            if (status == "active") {
+                int hours = timeLeft / 3600;
+                int minutes = (timeLeft % 3600) / 60;
+                int secs = timeLeft % 60;
+                timeText = QString("%1h %2m %3s").arg(hours).arg(minutes).arg(secs);
+            } else {
+                timeText = "Đã kết thúc";
+            }
+            table->setItem(row, 4, new QTableWidgetItem(timeText));
+            
+            table->setItem(row, 5, new QTableWidgetItem(QString::number(totalBids)));
+            
+            QString statusText = (status == "active") ? "🟢 Đang diễn ra" : "⚫ Đã kết thúc";
+            QTableWidgetItem *statusItem = new QTableWidgetItem(statusText);
+            statusItem->setForeground(status == "active" ? QColor("#4CAF50") : QColor("#757575"));
+            table->setItem(row, 6, statusItem);
+            
+            table->setItem(row, 7, new QTableWidgetItem(seller));
+            
+            row++;
+        }
+    }
+    
+    table->resizeColumnsToContents();
+    table->horizontalHeader()->setStretchLastSection(true);
+    
+    layout->addWidget(table);
+    
+    QPushButton *closeBtn = new QPushButton("✅ Đóng");
+    closeBtn->setStyleSheet(
+        "QPushButton { background: #2196F3; color: white; padding: 10px; "
+        "border-radius: 5px; font-weight: bold; font-size: 14px; }"
+        "QPushButton:hover { background: #1976D2; }"
+    );
+    connect(closeBtn, &QPushButton::clicked, dialog, &QDialog::accept);
+    layout->addWidget(closeBtn);
+    
+    qDebug() << "[MAINWINDOW] Showing search results dialog";
+    dialog->exec();
 }
-
 void MainWindow::onAuctionCreated(int auctionId)
 {
     Q_UNUSED(auctionId);

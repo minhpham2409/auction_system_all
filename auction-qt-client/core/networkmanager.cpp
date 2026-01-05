@@ -437,15 +437,21 @@ else if (command == "ROOM_HISTORY") {
     // FIX: Remove trailing |
     if (data.endsWith('|')) data.chop(1);
     emit auctionHistoryReceived(data);
-}
-    
-    // Search results
-    else if (command == "SEARCH_RESULTS") {
-        // Server: SEARCH_RESULTS|auctionId;title;currentPrice;buyNowPrice;timeLeft;totalBids;status;seller;room|...
-        // For now, just notify
-        emit notification("SEARCH", "Search completed");
+}    else if (command == "SEARCH_RESULTS") {
+        qDebug() << "[NETWORK] ===== SEARCH_RESULTS RECEIVED =====";
+        qDebug() << "[NETWORK] Command:" << command;
+        qDebug() << "[NETWORK] Parts count:" << parts.size();
+        
+        QString data = parts.mid(1).join("|");
+        if (data.endsWith('|')) data.chop(1);
+        
+        qDebug() << "[NETWORK] Data to emit:" << data;
+        qDebug() << "[NETWORK] About to emit searchResultsReceived signal...";
+        
+        emit searchResultsReceived(data);
+        
+        qDebug() << "[NETWORK] Signal emitted!";
     }
-    
     // Notifications - Real-time broadcasts
     else if (command.startsWith("NOTIF_")) {
         parseNotification(parts);
