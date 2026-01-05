@@ -37,7 +37,7 @@ void* auction_timer_thread(void *arg) {
                 
                 if (auctions[i].current_bidder_id > 0) {
                     // Has winner
-                    db_end_auction(auctions[i].auction_id, auctions[i].current_bidder_id, "Time Ended");
+                    db_end_auction(auctions[i].auction_id, auctions[i].current_bidder_id, "bid");
                     
                     User winner;
                     if (db_get_user(auctions[i].current_bidder_id, &winner) == 0) {
