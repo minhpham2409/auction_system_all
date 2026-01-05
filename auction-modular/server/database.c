@@ -407,11 +407,10 @@ int db_delete_auction(int auction_id, int user_id) {
         return -1;
     }
     sqlite3_finalize(stmt);
-    
-    if (strcmp(status, "waiting") != 0) {
-        sqlite3_exec(g_db, "ROLLBACK;", NULL, NULL, NULL);
-        return -2;
-    }
+    if (strcmp(status, "active") != 0 && strcmp(status, "waiting") != 0) {
+    sqlite3_exec(g_db, "ROLLBACK;", NULL, NULL, NULL);
+    return -2;
+}
     
     sql = "SELECT created_by FROM rooms WHERE room_id = ?";
     sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
