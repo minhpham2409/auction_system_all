@@ -386,63 +386,52 @@ int db_get_auctions_by_room(int room_id, Auction auctions[], int max_count) {
     sqlite3_finalize(stmt);
     return count;
 }
-
 int db_delete_auction(int auction_id, int user_id) {
-    sqlite3_exec(g_db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
-    
-    char *sql = "SELECT seller_id, room_id, status FROM auctions WHERE auction_id = ?";
     sqlite3_stmt *stmt;
-    sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
+    
+    // Get auction status first
+    const char *sql_check = "SELECT status, seller_id FROM auctions WHERE auction_id = ?";
+    sqlite3_prepare_v2(g_db, sql_check, -1, &stmt, NULL);
     sqlite3_bind_int(stmt, 1, auction_id);
     
-    int seller_id = -1, room_id = -1;
-    char status[20];
+    char status[20] = "";
+    int seller_id = 0;
     if (sqlite3_step(stmt) == SQLITE_ROW) {
-        seller_id = sqlite3_column_int(stmt, 0);
-        room_id = sqlite3_column_int(stmt, 1);
-        strcpy(status, (const char*)sqlite3_column_text(stmt, 2));
-    } else {
-        sqlite3_finalize(stmt);
-        sqlite3_exec(g_db, "ROLLBACK;", NULL, NULL, NULL);
+        strcpy(status, (const char*)sqlite3_column_text(stmt, 0));
+        seller_id = sqlite3_column_int(stmt, 1);
+    }
+    sqlite3_finalize(stmt);
+    
+    // Check ownership
+    if (seller_id != user_id) {
         return -1;
     }
-    sqlite3_finalize(stmt);
-    if (strcmp(status, "active") != 0 && strcmp(status, "waiting") != 0) {
-    sqlite3_exec(g_db, "ROLLBACK;", NULL, NULL, NULL);
-    return -2;
-}
     
-    sql = "SELECT created_by FROM rooms WHERE room_id = ?";
-    sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
-    sqlite3_bind_int(stmt, 1, room_id);
+    // OLD: Only allow deleting active/waiting
+    // if (strcmp(status, "active") != 0 && strcmp(status, "waiting") != 0) {
+    //     return -2;
+    // }
     
-    int room_creator = -1;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        room_creator = sqlite3_column_int(stmt, 0);
-    }
-    sqlite3_finalize(stmt);
-    
-    if (seller_id != user_id && room_creator != user_id) {
-        sqlite3_exec(g_db, "ROLLBACK;", NULL, NULL, NULL);
-        return -4;
+    // NEW: Allow deleting active, waiting, OR queued
+    if (strcmp(status, "active") != 0 && 
+        strcmp(status, "waiting") != 0 && 
+        strcmp(status, "queued") != 0) {
+        printf("[DB] Cannot delete auction with status: %s\n", status);
+        return -2;
     }
     
-    sql = "UPDATE auctions SET status = 'deleted' WHERE auction_id = ?";
+    // Mark as deleted
+    const char *sql = "UPDATE auctions SET status = 'deleted' WHERE auction_id = ?";
     sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
     sqlite3_bind_int(stmt, 1, auction_id);
-    sqlite3_step(stmt);
+    
+    int result = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     
-    sql = "UPDATE rooms SET total_auctions = total_auctions - 1 WHERE room_id = ?";
-    sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
-    sqlite3_bind_int(stmt, 1, room_id);
-    sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
+    printf("[DB] Deleted auction %d (was: %s)\n", auction_id, status);
     
-    sqlite3_exec(g_db, "COMMIT;", NULL, NULL, NULL);
-    return 0;
+    return (result == SQLITE_DONE) ? 0 : -3;
 }
-
 int db_search_auctions(SearchFilter filter, Auction results[], int max_results) {
     char sql[2048] = "SELECT * FROM auctions WHERE status != 'deleted'";
     
@@ -836,7 +825,31 @@ int db_get_full_auction_details(int auction_id, Auction *auction, char *seller_n
     sqlite3_finalize(stmt);
     return result;
 }
-
+int db_activate_auction(int auction_id, int seller_id) {
+    (void)seller_id; // May be used for validation
+    
+    const char *sql = "UPDATE auctions SET status = 'active', "
+                     "start_time = strftime('%s', 'now'), "
+                     "end_time = strftime('%s', 'now') + duration "
+                     "WHERE auction_id = ?";
+    
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        return -1;
+    }
+    
+    sqlite3_bind_int(stmt, 1, auction_id);
+    
+    int result = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (result == SQLITE_DONE) {
+        printf("[DB] Activated auction %d\n", auction_id);
+        return 0;
+    }
+    
+    return -1;
+}
 int db_check_auction_expired(int auction_id) {
     sqlite3_stmt *stmt;
     const char *sql = "SELECT end_time FROM auctions WHERE auction_id = ? AND status = 'active'";
@@ -857,15 +870,13 @@ int db_check_auction_expired(int auction_id) {
     sqlite3_finalize(stmt);
     return expired;
 }
-
 int db_end_auction(int auction_id, int winner_id, const char *method) {
     sqlite3_stmt *stmt;
-    const char *sql = "UPDATE auctions SET status = 'ended', winner_id = ?, win_method = ? WHERE auction_id = ?";
+    const char *sql = "UPDATE auctions SET status = 'ended', winner_id = ?, "
+                     "win_method = ?, is_queued = 0, queue_position = 0 "  // ← THÊM: reset queue fields
+                     "WHERE auction_id = ?";
     
-    if (sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL) != SQLITE_OK) {
-        return -1;
-    }
-    
+    sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
     sqlite3_bind_int(stmt, 1, winner_id);
     sqlite3_bind_text(stmt, 2, method, -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt, 3, auction_id);
@@ -873,9 +884,14 @@ int db_end_auction(int auction_id, int winner_id, const char *method) {
     int result = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     
-    return (result == SQLITE_DONE) ? 0 : -1;
+    if (result == SQLITE_DONE) {
+        printf("[DB] Auction %d ended. Winner: %d, Method: %s\n", 
+               auction_id, winner_id, method);
+        return 0;
+    }
+    
+    return -1;
 }
-
 int db_get_all_active_auctions(Auction *auctions, int max_count) {
     sqlite3_stmt *stmt;
     const char *sql = "SELECT auction_id, seller_id, room_id, title, description, "

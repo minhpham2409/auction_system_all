@@ -13,5 +13,11 @@ void broadcast_auction_deleted(int room_id, int auction_id, const char* title, i
 void broadcast_new_bid(int room_id, int auction_id, const char *title, const char *bidder, double amount, int time_left);
 void broadcast_auction_winner(int room_id, int auction_id, const char *title, const char *winner, double price, const char *method);
 void broadcast_30s_warning(int room_id, int auction_id, const char *title, int time_left);
-
+void broadcast_auction_queued(int room_id, int auction_id, const char *title, 
+                             const char *seller, int queue_position);
+void broadcast_auction_started(int room_id, int auction_id, const char *title,
+                              const char *seller, double start_price, 
+                              double buy_now_price, double min_increment, 
+                              int duration);
+void broadcast_queue_empty(int room_id);
 #endif

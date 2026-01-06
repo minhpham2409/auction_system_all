@@ -25,6 +25,39 @@ void broadcast_to_room(int room_id, const char *message, int exclude_socket) {
     
     printf("[BROADCAST] Sent to %d clients in room %d\n", sent_count, room_id);
     pthread_mutex_unlock(&g_client_mutex);
+}// Remove the 3 buggy functions and add these simple ones:
+
+void broadcast_auction_queued(int room_id, int auction_id, const char *title, 
+                             const char *seller, int queue_position) {
+    char message[BUFFER_SIZE];
+    sprintf(message, "NOTIF_AUCTION_QUEUED|%d|%s|%s|%d\n", 
+            auction_id, title, seller, queue_position);
+    
+    broadcast_to_room(room_id, message, -1);
+    
+    printf("[BROADCAST] Auction queued notification sent to room %d\n", room_id);
+}
+
+void broadcast_auction_started(int room_id, int auction_id, const char *title,
+                              const char *seller, double start_price, 
+                              double buy_now_price, double min_increment, 
+                              int duration) {
+    char message[BUFFER_SIZE];
+    sprintf(message, "NOTIF_AUCTION_START|%d|%s|%s|%.2f|%.2f|%.2f|%d\n",
+            auction_id, title, seller, start_price, buy_now_price, 
+            min_increment, duration);
+    
+    broadcast_to_room(room_id, message, -1);
+    
+    printf("[BROADCAST] Auction start notification sent to room %d\n", room_id);
+}
+
+void broadcast_queue_empty(int room_id) {
+    char message[] = "NOTIF_QUEUE_EMPTY\n";
+    
+    broadcast_to_room(room_id, message, -1);
+    
+    printf("[BROADCAST] Queue empty notification sent to room %d\n", room_id);
 }
 
 void broadcast_to_all_users(const char *message, int exclude_socket) {

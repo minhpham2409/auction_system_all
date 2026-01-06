@@ -40,6 +40,8 @@ private slots:
     void on_placeBidButton_clicked();
      void onSearchResultsReceived(const QString& results);
     void on_buyNowButton_clicked();
+
+    void updateAuctionActionButtons();
     void on_deleteAuctionButton_clicked();
     void on_activateAuctionButton_clicked();
     void on_searchAuctionsButton_clicked();
@@ -92,6 +94,7 @@ private:
     QTimer *warningCheckTimer;    // ← THÊM
     QSet<int> warnedAuctions;     // ← THÊM
     
+    
     QListWidget *roomsList;
     QListWidget *auctionsList;
     QListWidget *queueList;
@@ -99,6 +102,9 @@ private:
     QLabel *roomStatusLabel;
     QTextEdit *activityLog;
     
+     QPushButton *bidButton;
+    QPushButton *buyNowButton;
+    QPushButton *deleteAuctionButton;
     void setupUI();
     void updateUserInfo();
     void updateRoomStatus();

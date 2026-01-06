@@ -33,15 +33,12 @@ int queue_init_room(int room_id, const char *mode) {
     printf("[QUEUE] Initialized room %d with mode: %s\n", room_id, mode);
     
     return (result == SQLITE_DONE) ? 0 : -1;
-}
-
-// Add auction to queue (at the end)
-int queue_add_auction(int room_id, int auction_id) {
+}int queue_add_auction(int room_id, int auction_id) {
     sqlite3_stmt *stmt;
     
-    // Get current max position in queue
+    // Get current max position in queue - ONLY QUEUED AUCTIONS
     const char *sql_max = "SELECT COALESCE(MAX(queue_position), 0) FROM auctions "
-                         "WHERE room_id = ? AND is_queued = 1";
+                         "WHERE room_id = ? AND status = 'queued'";
     
     sqlite3_prepare_v2(g_db, sql_max, -1, &stmt, NULL);
     sqlite3_bind_int(stmt, 1, room_id);
@@ -52,8 +49,12 @@ int queue_add_auction(int room_id, int auction_id) {
     }
     sqlite3_finalize(stmt);
     
-    // Add auction with next position
+    // ✅ FIX: Position bắt đầu từ 1, không phải 0
     int new_position = max_position + 1;
+    
+    printf("[QUEUE] Adding auction %d to room %d at position %d\n", 
+           auction_id, room_id, new_position);
+    
     const char *sql = "UPDATE auctions SET is_queued = 1, queue_position = ?, "
                      "status = 'queued' WHERE auction_id = ?";
     
@@ -65,34 +66,33 @@ int queue_add_auction(int room_id, int auction_id) {
     sqlite3_finalize(stmt);
     
     if (result == SQLITE_DONE) {
-        printf("[QUEUE] Added auction %d to room %d queue at position %d\n", 
-               auction_id, room_id, new_position);
-        
-        // If this is the first auction, set it as next
-        const char *sql_check = "SELECT current_auction_id FROM room_queue_state WHERE room_id = ?";
-        sqlite3_prepare_v2(g_db, sql_check, -1, &stmt, NULL);
-        sqlite3_bind_int(stmt, 1, room_id);
-        
-        int has_current = 0;
-        if (sqlite3_step(stmt) == SQLITE_ROW) {
-            has_current = (sqlite3_column_int(stmt, 0) > 0);
-        }
-        sqlite3_finalize(stmt);
-        
-        if (!has_current && new_position == 1) {
-            // First auction in queue, set as next
-            const char *sql_next = "UPDATE room_queue_state SET next_auction_id = ? WHERE room_id = ?";
-            sqlite3_prepare_v2(g_db, sql_next, -1, &stmt, NULL);
-            sqlite3_bind_int(stmt, 1, auction_id);
-            sqlite3_bind_int(stmt, 2, room_id);
-            sqlite3_step(stmt);
-            sqlite3_finalize(stmt);
-        }
-        
+        printf("[QUEUE] ✅ Added auction %d to position %d\n", auction_id, new_position);
         return 0;
     }
     
     return -1;
+}
+int queue_get_delay(int room_id) {
+    sqlite3_stmt *stmt;
+    const char *sql = "SELECT auto_start_delay FROM room_queue_state WHERE room_id = ?";
+    
+    if (sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        return 3; // Default 3 seconds
+    }
+    
+    sqlite3_bind_int(stmt, 1, room_id);
+    
+    int delay = 3; // Default
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        delay = sqlite3_column_int(stmt, 0);
+    }
+    
+    sqlite3_finalize(stmt);
+    
+    // Ensure delay is positive
+    if (delay <= 0) delay = 3;
+    
+    return delay;
 }
 
 // Remove auction from queue and reorder
@@ -134,30 +134,36 @@ int queue_remove_auction(int room_id, int auction_id) {
     
     printf("[QUEUE] Removed auction %d from room %d queue\n", auction_id, room_id);
     return 0;
-}
-
-// Get next auction in queue
-int queue_get_next_auction(int room_id) {
+}int queue_get_next_auction(int room_id) {
     sqlite3_stmt *stmt;
     
-    // Get lowest position queued auction
+    // ✅ FIX: Lấy auction với position >= 1 (không phải = 0)
     const char *sql = "SELECT auction_id FROM auctions "
-                     "WHERE room_id = ? AND is_queued = 1 AND status = 'queued' "
-                     "ORDER BY queue_position ASC LIMIT 1";
+                     "WHERE room_id = ? "
+                     "AND is_queued = 1 "
+                     "AND status = 'queued' "
+                     "AND queue_position >= 1 "  // ← THÊM ĐIỀU KIỆN
+                     "ORDER BY queue_position ASC "
+                     "LIMIT 1";
     
     sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
     sqlite3_bind_int(stmt, 1, room_id);
     
-    int auction_id = -1;
+    int next_auction_id = 0;
     if (sqlite3_step(stmt) == SQLITE_ROW) {
-        auction_id = sqlite3_column_int(stmt, 0);
+        next_auction_id = sqlite3_column_int(stmt, 0);
     }
     
     sqlite3_finalize(stmt);
-    return auction_id;
+    
+    if (next_auction_id > 0) {
+        printf("[QUEUE] Next auction in room %d: %d\n", room_id, next_auction_id);
+    } else {
+        printf("[QUEUE] No queued auctions in room %d\n", room_id);
+    }
+    
+    return next_auction_id;
 }
-
-// Get currently active auction
 int queue_get_current_auction(int room_id) {
     sqlite3_stmt *stmt;
     const char *sql = "SELECT current_auction_id FROM room_queue_state WHERE room_id = ?";
@@ -173,7 +179,6 @@ int queue_get_current_auction(int room_id) {
     sqlite3_finalize(stmt);
     return auction_id;
 }
-
 // Start next auction in queue
 int queue_start_next_auction(int room_id) {
     int next_auction_id = queue_get_next_auction(room_id);
@@ -186,14 +191,21 @@ int queue_start_next_auction(int room_id) {
     sqlite3_stmt *stmt;
     sqlite3_exec(g_db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
     
-    // Activate the auction
+    // Activate the auction AND remove from queue
     time_t now = time(NULL);
     Auction auction;
     db_get_auction(next_auction_id, &auction);
     time_t end_time = now + auction.duration;
     
-    const char *sql_activate = "UPDATE auctions SET status = 'active', "
-                              "start_time = ?, end_time = ? WHERE auction_id = ?";
+    // ✅ FIX: Thêm is_queued = 0, queue_position = 0
+    const char *sql_activate = "UPDATE auctions SET "
+                              "status = 'active', "
+                              "is_queued = 0, "              // ← THÊM: Xóa khỏi queue
+                              "queue_position = 0, "         // ← THÊM: Reset position
+                              "start_time = ?, "
+                              "end_time = ? "
+                              "WHERE auction_id = ?";
+    
     sqlite3_prepare_v2(g_db, sql_activate, -1, &stmt, NULL);
     sqlite3_bind_int64(stmt, 1, now);
     sqlite3_bind_int64(stmt, 2, end_time);
@@ -210,7 +222,7 @@ int queue_start_next_auction(int room_id) {
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     
-    // Get next in line
+    // Get next in line (sau khi đã xóa auction hiện tại khỏi queue)
     int following_auction = queue_get_next_auction(room_id);
     if (following_auction > 0) {
         const char *sql_next = "UPDATE room_queue_state SET next_auction_id = ? WHERE room_id = ?";
@@ -238,10 +250,8 @@ int queue_start_next_auction(int room_id) {
     printf("[QUEUE] Started auction %d (%s) in room %d\n", 
            next_auction_id, auction.title, room_id);
     
-    return 0;
+    return 0;  // ✅ Trả về 0 nếu thành công
 }
-
-// Queue auto-processor thread
 void* queue_auto_processor_thread(void *arg) {
     (void)arg;
     
@@ -263,29 +273,46 @@ void* queue_auto_processor_thread(void *arg) {
             int room_id = sqlite3_column_int(stmt, 0);
             int delay = sqlite3_column_int(stmt, 1);
             
-            // Check if current auction has ended
+            // Check if current auction exists and its status
             int current_auction_id = queue_get_current_auction(room_id);
             
-            if (current_auction_id > 0) {
-                Auction current;
-                if (db_get_auction(current_auction_id, &current) == 0) {
-                    if (strcmp(current.status, "ended") == 0 || 
-                        strcmp(current.status, "expired") == 0) {
-                        
-                        // Wait for delay period
-                        time_t now = time(NULL);
-                        if (now - current.end_time >= delay) {
-                            printf("[QUEUE] Auto-starting next auction in room %d after delay\n", room_id);
-                            queue_start_next_auction(room_id);
-                        }
-                    }
-                }
-            } else {
-                // No current auction, start first one if available
+            if (current_auction_id <= 0) {
+                // No current auction, check if queue has items
                 int next_auction = queue_get_next_auction(room_id);
                 if (next_auction > 0) {
                     printf("[QUEUE] Auto-starting first auction in room %d\n", room_id);
                     queue_start_next_auction(room_id);
+                }
+                
+            } else {
+                // Has current auction, check if it ended
+                Auction current;
+                if (db_get_auction(current_auction_id, &current) == 0) {
+                    if (strcmp(current.status, "ended") == 0) {
+                        // Wait for delay period
+                        time_t now = time(NULL);
+                        time_t end_plus_delay = current.end_time + delay;
+                        
+                        if (now >= end_plus_delay) {
+                            printf("[QUEUE] Auto-starting next auction in room %d after delay\n", room_id);
+                            int result = queue_start_next_auction(room_id);
+                            
+                            if (result <= 0) {
+                                // No more auctions, clear current
+                                const char *sql_clear = "UPDATE room_queue_state "
+                                                       "SET current_auction_id = NULL "
+                                                       "WHERE room_id = ?";
+                                sqlite3_stmt *clear_stmt;
+                                if (sqlite3_prepare_v2(g_db, sql_clear, -1, &clear_stmt, NULL) == SQLITE_OK) {
+                                    sqlite3_bind_int(clear_stmt, 1, room_id);
+                                    sqlite3_step(clear_stmt);
+                                    sqlite3_finalize(clear_stmt);
+                                }
+                                printf("[QUEUE] Queue empty for room %d\n", room_id);
+                            }
+                        }
+                    }
+                    // ELSE: Auction still active, do nothing
                 }
             }
         }
@@ -296,7 +323,6 @@ void* queue_auto_processor_thread(void *arg) {
     printf("[QUEUE] Auto-processor thread stopped\n");
     return NULL;
 }
-
 void start_queue_processor() {
     queue_processor_running = 1;
     

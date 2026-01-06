@@ -9,6 +9,8 @@
 #include <sys/socket.h>
 #include <time.h>
 #include <stdlib.h> 
+#include "queue.h"
+#include <unistd.h>
 
 void handle_register(int client_socket, char *data) {
     char username[50], password[100];
@@ -229,52 +231,155 @@ void handle_leave_room(int client_socket, char *data) {
     
     send(client_socket, response, strlen(response), 0);
 }
-
 void handle_create_auction(int client_socket, char *data) {
-    int user_id, room_id, duration;
-    char title[200], desc[500];
+    int seller_id, room_id, duration;
     double start_price, buy_now_price, min_increment;
+    char title[256], description[1024];
     
     sscanf(data, "%d|%d|%[^|]|%[^|]|%lf|%lf|%lf|%d",
-           &user_id, &room_id, title, desc, &start_price, 
-           &buy_now_price, &min_increment, &duration);
+           &seller_id, &room_id, title, description,
+           &start_price, &buy_now_price, &min_increment, &duration);
     
-    int room_creator = db_get_room_creator(room_id);
-    if (room_creator != user_id) {
+    printf("[DEBUG] Create auction: seller=%d, room=%d, title='%s', duration=%d\n",
+           seller_id, room_id, title, duration);
+    
+    // Create auction (status = 'waiting' initially)
+    int auction_id = db_create_auction(seller_id, room_id, title, description,
+                                       start_price, buy_now_price, min_increment, duration);
+    
+    if (auction_id > 0) {
+        printf("[AUCTION] Created auction %d in room %d\n", auction_id, room_id);
+        
+        // Get seller username
+        User seller;
+        char seller_username[50] = "Unknown";
+        if (db_get_user(seller_id, &seller) == 0) {
+            strcpy(seller_username, seller.username);
+        }
+        
+        // ═══════════════════════════════════════════════════════
+        // CRITICAL: Get ACTIVE auction in room (not just current in queue state)
+        // ═══════════════════════════════════════════════════════
+        
+        // Check for ANY active auction in this room
+        sqlite3_stmt *stmt;
+        const char *sql_check = "SELECT auction_id FROM auctions "
+                               "WHERE room_id = ? AND status = 'active' LIMIT 1";
+        int has_active = 0;
+        
+        if (sqlite3_prepare_v2(g_db, sql_check, -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_int(stmt, 1, room_id);
+            if (sqlite3_step(stmt) == SQLITE_ROW) {
+                has_active = sqlite3_column_int(stmt, 0);
+                printf("[DEBUG] Room %d has active auction: %d\n", room_id, has_active);
+            }
+            sqlite3_finalize(stmt);
+        }
+        
+        if (has_active > 0) {
+            // ═══════════════════════════════════════════════════════
+            // ROOM HAS ACTIVE AUCTION → ADD TO QUEUE
+            // ═══════════════════════════════════════════════════════
+            int result = queue_add_auction(room_id, auction_id);
+            
+            if (result == 0) {
+                int position = queue_get_position(room_id, auction_id);
+                
+                printf("[QUEUE] Auction %d added to queue at position %d\n", 
+                       auction_id, position);
+                
+                char response[BUFFER_SIZE];
+                sprintf(response, "AUCTION_CREATED|%d\n", auction_id);
+                send(client_socket, response, strlen(response), 0);
+                
+                char notif[BUFFER_SIZE];
+                sprintf(notif, "NOTIF_AUCTION_QUEUED|%d|%s|%s|%d\n",
+                        auction_id, title, seller_username, position);
+                broadcast_to_room(room_id, notif, -1);
+                
+                printf("[BROADCAST] Sent queue notification to room %d\n", room_id);
+            } else {
+                // Failed to add to queue - activate it anyway
+                printf("[WARN] Failed to add to queue, activating immediately\n");
+                db_activate_auction(auction_id, seller_id);
+                
+                char response[BUFFER_SIZE];
+                sprintf(response, "AUCTION_CREATED|%d\n", auction_id);
+                send(client_socket, response, strlen(response), 0);
+                
+                char notif[BUFFER_SIZE];
+                sprintf(notif, "NOTIF_AUCTION_NEW|%d|%s|%s|%.2f|%.2f|%.2f|%d\n",
+                        auction_id, title, seller_username, start_price, 
+                        buy_now_price, min_increment, duration);
+                broadcast_to_room(room_id, notif, -1);
+            }
+            
+        } else {
+            // ═══════════════════════════════════════════════════════
+            // NO ACTIVE AUCTION → START IMMEDIATELY
+            // ═══════════════════════════════════════════════════════
+            printf("[QUEUE] No active auction in room %d, starting auction %d immediately\n", 
+                   room_id, auction_id);
+            
+            db_activate_auction(auction_id, seller_id);
+            
+            // Initialize queue state if needed
+            queue_init_room(room_id, "auto");
+            
+            // Set current auction
+            const char *sql_update = "UPDATE room_queue_state SET current_auction_id = ? "
+                                    "WHERE room_id = ?";
+            if (sqlite3_prepare_v2(g_db, sql_update, -1, &stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int(stmt, 1, auction_id);
+                sqlite3_bind_int(stmt, 2, room_id);
+                sqlite3_step(stmt);
+                sqlite3_finalize(stmt);
+            }
+            
+            char response[BUFFER_SIZE];
+            sprintf(response, "AUCTION_CREATED|%d\n", auction_id);
+            send(client_socket, response, strlen(response), 0);
+            
+            char notif[BUFFER_SIZE];
+            sprintf(notif, "NOTIF_AUCTION_NEW|%d|%s|%s|%.2f|%.2f|%.2f|%d\n",
+                    auction_id, title, seller_username, start_price, 
+                    buy_now_price, min_increment, duration);
+            broadcast_to_room(room_id, notif, -1);
+            
+            printf("[BROADCAST] New auction started in room %d\n", room_id);
+        }
+        
+    } else {
         char response[BUFFER_SIZE];
-        sprintf(response, "CREATE_AUCTION_FAIL|Only room creator can create auctions\n");
+        sprintf(response, "AUCTION_CREATE_FAIL|Failed to create auction\n");
+        send(client_socket, response, strlen(response), 0);
+    }
+}
+void handle_set_queue_mode(int client_socket, char *data) {
+    int room_id;
+    char mode[20];
+    
+    sscanf(data, "%d|%s", &room_id, mode);
+    
+    if (strcmp(mode, "auto") != 0 && strcmp(mode, "manual") != 0) {
+        char response[] = "QUEUE_MODE_FAIL|Invalid mode\n";
         send(client_socket, response, strlen(response), 0);
         return;
     }
     
-    int auction_id = db_create_auction(user_id, room_id, title, desc,
-                                       start_price, buy_now_price, 
-                                       min_increment, duration);
+    int result = queue_set_mode(room_id, mode);
     
-    char response[BUFFER_SIZE];
-    if (auction_id > 0) {
-        db_update_auction_status(auction_id, "active");
+    if (result == 0) {
+        char response[BUFFER_SIZE];
+        sprintf(response, "QUEUE_MODE_SUCCESS|%s\n", mode);
+        send(client_socket, response, strlen(response), 0);
         
-        // BROADCAST NEW AUCTION WITH DETAILS
-       User creator;
-        if (db_get_user(user_id, &creator) == 0) {
-            char broadcast_msg[BUFFER_SIZE * 2];
-            sprintf(broadcast_msg, "NOTIF_AUCTION_NEW|%d|%s|%s|%.2f|%.2f|%.2f|%d\n",
-                    auction_id, title, creator.username, 
-                    start_price, buy_now_price, min_increment, duration);
-            broadcast_to_room(room_id, broadcast_msg, -1);
-            printf("[BROADCAST] New auction: %s in room %d\n", title, room_id);
-        }
-        
-        sprintf(response, "CREATE_AUCTION_SUCCESS|%d|%s\n", auction_id, title);
-        printf("[INFO] Auction created: %s (ID: %d)\n", title, auction_id);
+        printf("[QUEUE] Room %d queue mode set to: %s\n", room_id, mode);
     } else {
-        sprintf(response, "CREATE_AUCTION_FAIL|Failed to create auction\n");
+        char response[] = "QUEUE_MODE_FAIL|Failed to set mode\n";
+        send(client_socket, response, strlen(response), 0);
     }
-    
-    send(client_socket, response, strlen(response), 0);
 }
-
 void handle_list_auctions(int client_socket, char *data) {
     int room_id;
     sscanf(data, "%d", &room_id);
@@ -559,28 +664,92 @@ void handle_search_auctions(int client_socket, char *data) {
     }
     
     send(client_socket, response, strlen(response), 0);
-}
-void handle_buy_now(int client_socket, char *data) {
+}void handle_buy_now(int client_socket, char *data) {
     int auction_id, user_id;
     sscanf(data, "%d|%d", &auction_id, &user_id);
     
+    // Get room_id before buy now (we need it later)
+    int room_id = 0;
+    Auction auction;
+    if (db_get_auction_with_room(auction_id, &auction, &room_id) != 0) {
+        char response[BUFFER_SIZE];
+        sprintf(response, "BUY_NOW_FAIL|Auction not found\n");
+        send(client_socket, response, strlen(response), 0);
+        return;
+    }
+    
+    // Execute buy now
     int result = db_buy_now(auction_id, user_id);
     
     char response[BUFFER_SIZE];
     if (result == 0) {
         // BROADCAST WINNER
-        Auction auction;
-        int room_id = 0;
-        if (db_get_auction_with_room(auction_id, &auction, &room_id) == 0) {
-            User winner;
-            if (db_get_user(user_id, &winner) == 0) {
-                broadcast_auction_winner(room_id, auction_id, auction.title,
-                                       winner.username, auction.buy_now_price, "Buy Now");
-            }
+        db_get_auction_with_room(auction_id, &auction, &room_id);
+        
+        User winner;
+        if (db_get_user(user_id, &winner) == 0) {
+            broadcast_auction_winner(room_id, auction_id, auction.title,
+                                   winner.username, auction.buy_now_price, "Buy Now");
         }
         
         sprintf(response, "BUY_NOW_SUCCESS|%d\n", auction_id);
+        send(client_socket, response, strlen(response), 0);
+        
         printf("[INFO] Buy now: User %d, Auction %d\n", user_id, auction_id);
+        
+        // ═══════════════════════════════════════════════════════
+        // NEW: START NEXT AUCTION FROM QUEUE
+        // ═══════════════════════════════════════════════════════
+        
+        printf("[QUEUE] Auction %d ended by buy now, checking queue in room %d...\n", 
+               auction_id, room_id);
+        
+        // Clear current auction in queue state
+        sqlite3_stmt *stmt;
+        const char *sql_clear = "UPDATE room_queue_state SET current_auction_id = NULL "
+                               "WHERE room_id = ?";
+        if (sqlite3_prepare_v2(g_db, sql_clear, -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_int(stmt, 1, room_id);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
+        
+        // Get delay
+        int delay = queue_get_delay(room_id);
+        if (delay <= 0) delay = 3;
+        
+        printf("[QUEUE] Waiting %d seconds before next auction...\n", delay);
+        sleep(delay);
+        
+        // Start next auction
+        int next_auction = queue_start_next_auction(room_id);
+        
+        if (next_auction > 0) {
+            printf("[QUEUE] ✅ Started next auction: %d\n", next_auction);
+            
+            // Get details and broadcast
+            Auction next;
+            if (db_get_auction(next_auction, &next) == 0) {
+                User seller;
+                if (db_get_user(next.seller_id, &seller) == 0) {
+                    char start_msg[BUFFER_SIZE];
+                    sprintf(start_msg, "NOTIF_AUCTION_START|%d|%s|%s|%.2f|%.2f|%.2f|%d\n",
+                            next_auction, next.title, seller.username,
+                            next.start_price, next.buy_now_price, 
+                            next.min_increment, next.duration);
+                    broadcast_to_room(room_id, start_msg, -1);
+                    
+                    printf("[BROADCAST] Next auction started notification sent\n");
+                }
+            }
+        } else {
+            printf("[QUEUE] 📭 No more auctions in queue for room %d\n", room_id);
+            
+            char empty_msg[] = "NOTIF_QUEUE_EMPTY\n";
+            broadcast_to_room(room_id, empty_msg, -1);
+        }
+        // ═══════════════════════════════════════════════════════
+        
     } else {
         const char *error_msg;
         switch(result) {
@@ -590,11 +759,9 @@ void handle_buy_now(int client_socket, char *data) {
             default: error_msg = "Unknown error"; break;
         }
         sprintf(response, "BUY_NOW_FAIL|%s\n", error_msg);
+        send(client_socket, response, strlen(response), 0);
     }
-    
-    send(client_socket, response, strlen(response), 0);
 }
-
 void handle_delete_auction(int client_socket, char *data) {
     int auction_id, user_id;
     sscanf(data, "%d|%d", &auction_id, &user_id);
@@ -617,22 +784,28 @@ void handle_delete_auction(int client_socket, char *data) {
         send(client_socket, response, strlen(response), 0);
         return;
     }
-    // Check status - không cho xóa ended
-if (strcmp(auction.status, "ended") == 0) {
-    char response[BUFFER_SIZE];
-    sprintf(response, "DELETE_FAIL|Cannot delete ended auctions\n");
-    send(client_socket, response, strlen(response), 0);
-    printf("[DEBUG] Delete failed: Auction ended\n");
-    return;
-}
     
-    // Check for bids
-    if (auction.total_bids > 0) {
+    // Check status - không cho xóa ended
+    if (strcmp(auction.status, "ended") == 0) {
+        char response[BUFFER_SIZE];
+        sprintf(response, "DELETE_FAIL|Cannot delete ended auctions\n");
+        send(client_socket, response, strlen(response), 0);
+        printf("[DEBUG] Delete failed: Auction ended\n");
+        return;
+    }
+    
+    // Check for bids (chỉ với active auctions)
+    if (strcmp(auction.status, "active") == 0 && auction.total_bids > 0) {
         char response[BUFFER_SIZE];
         sprintf(response, "DELETE_FAIL|Cannot delete auction with bids\n");
         send(client_socket, response, strlen(response), 0);
         return;
     }
+    
+    // Save room_id and status before deleting
+    int room_id = auction.room_id;
+    char old_status[20];
+    strcpy(old_status, auction.status);
     
     // Delete auction
     int result = db_delete_auction(auction_id, user_id);
@@ -640,17 +813,59 @@ if (strcmp(auction.status, "ended") == 0) {
     char response[BUFFER_SIZE];
     if (result == 0) {
         // Broadcast deletion to room
-        broadcast_auction_deleted(auction.room_id, auction_id, auction.title, client_socket);
+        broadcast_auction_deleted(room_id, auction_id, auction.title, client_socket);
         
         sprintf(response, "DELETE_SUCCESS|Auction deleted successfully\n");
-        printf("[INFO] User %d deleted auction %d\n", user_id, auction_id);
+        printf("[INFO] User %d deleted auction %d (status: %s)\n", user_id, auction_id, old_status);
+        
+        // ═══════════════════════════════════════════════════════
+        // NEW: If deleted active auction, start next in queue
+        // ═══════════════════════════════════════════════════════
+        if (strcmp(old_status, "active") == 0) {
+            printf("[QUEUE] Active auction deleted, checking queue...\n");
+            
+            // Clear current auction in queue state
+            sqlite3_stmt *stmt;
+            const char *sql = "UPDATE room_queue_state SET current_auction_id = NULL "
+                             "WHERE room_id = ?";
+            if (sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int(stmt, 1, room_id);
+                sqlite3_step(stmt);
+                sqlite3_finalize(stmt);
+            }
+            
+            // Start next auction
+            int next_auction = queue_start_next_auction(room_id);
+            if (next_auction > 0) {
+                printf("[QUEUE] ✅ Auto-started next auction: %d\n", next_auction);
+                
+                // Get details and broadcast
+                Auction next;
+                if (db_get_auction(next_auction, &next) == 0) {
+                    User seller;
+                    if (db_get_user(next.seller_id, &seller) == 0) {
+                        char start_msg[BUFFER_SIZE];
+                        sprintf(start_msg, "NOTIF_AUCTION_START|%d|%s|%s|%.2f|%.2f|%.2f|%d\n",
+                                next_auction, next.title, seller.username,
+                                next.start_price, next.buy_now_price, 
+                                next.min_increment, next.duration);
+                        broadcast_to_room(room_id, start_msg, -1);
+                    }
+                }
+            } else {
+                printf("[QUEUE] 📭 No more auctions in queue\n");
+                char empty_msg[] = "NOTIF_QUEUE_EMPTY\n";
+                broadcast_to_room(room_id, empty_msg, -1);
+            }
+        }
+        // ═══════════════════════════════════════════════════════
+        
     } else {
         sprintf(response, "DELETE_FAIL|Failed to delete auction\n");
     }
     
     send(client_socket, response, strlen(response), 0);
 }
-
 void handle_bid_history(int client_socket, char *data) {
     int auction_id;
     sscanf(data, "%d", &auction_id);

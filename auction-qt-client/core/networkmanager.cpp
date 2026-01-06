@@ -524,59 +524,49 @@ void NetworkManager::parseRoomListResponse(const QStringList& parts)
     
     qDebug() << "Total rooms parsed:" << rooms.size();
     emit roomListReceived(rooms);
-}
+}// OLD (WRONG):
+// void NetworkManager::parseAuctionListResponse(const QString& data) {
 
-void NetworkManager::parseAuctionListResponse(const QStringList& parts)
-{
+// NEW (CORRECT):
+void NetworkManager::parseAuctionListResponse(const QStringList& parts) {
+    // Join parts back to string if needed
+    QString data = parts.mid(1).join("|");  // Skip first part (command)
+    
+    QStringList auctionParts = data.split("|", Qt::SkipEmptyParts);
     QList<Auction> auctions;
     
-    // Server format: AUCTION_LIST|auctionId;title;price;buyNow;timeLeft;bids;status|...
-    // From handler.c: sprintf(temp, "%d;%s;%.2f;%.2f;%d;%d;%s|", id, title, price, buyNow, timeLeft, bids, status);
+    qDebug() << "parseAuctionListResponse - total parts:" << auctionParts.size();
     
-    qDebug() << "parseAuctionListResponse - total parts:" << parts.size();
-    
-    if (parts.size() < 2) {
-        qDebug() << "Empty auction list";
-        emit auctionListReceived(auctions);
-        return;
-    }
-    
-    // Skip first part (AUCTION_LIST command), process rest
-    for (int i = 1; i < parts.size(); i++) {
-        QString auctionData = parts[i];
-        if (auctionData.isEmpty()) continue;
+    for (const QString& auctionStr : auctionParts) {
+        QStringList fields = auctionStr.split(";");
         
-        // Split by semicolon
-        QStringList fields = auctionData.split(';');
-        qDebug() << "Auction" << i << "fields:" << fields;
-        Auction auction;
-        if (fields.size() >= 8) {  // Tăng từ 7 lên 8
-    auction.auctionId = fields[0].toInt();
-    auction.title = fields[1];
-    auction.currentPrice = fields[2].toDouble();
-    auction.buyNowPrice = fields[3].toDouble();
-    auction.minIncrement = fields[4].toDouble();  // <-- THÊM
-    int timeLeft = fields[5].toInt();              // Index thay đổi
-    auction.totalBids = fields[6].toInt();         // Index thay đổi
-    auction.status = fields[7];                    // Index thay đổi
-    
+        if (fields.size() >= 8) {
+            Auction auction;
+            auction.auctionId = fields.value(0).toInt();
+            auction.title = fields.value(1);
+            auction.currentPrice = fields.value(2).toDouble();
+            auction.buyNowPrice = fields.value(3).toDouble();
+            auction.minIncrement = fields.value(4).toDouble();
             
-            // Calculate end time from time left
-            if (auction.isActive() && timeLeft > 0) {
-                auction.endTime = QDateTime::currentSecsSinceEpoch() + timeLeft;
+            int timeLeft = fields.value(5).toInt();
+            auction.endTime = QDateTime::currentSecsSinceEpoch() + timeLeft;
+            
+            auction.totalBids = fields.value(6).toInt();
+            auction.status = fields.value(7);
+            
+            // Parse queue info if available
+            if (fields.size() > 8) {
+                auction.queuePosition = fields.value(8).toInt();
+                auction.isQueued = (auction.queuePosition > 0);
             } else {
-                auction.endTime = 0;
+                auction.queuePosition = 0;
+                auction.isQueued = false;
             }
             
-            qDebug() << "Parsed auction:" << auction.auctionId << auction.title 
-                     << auction.status << "Time left:" << timeLeft;
             auctions.append(auction);
-        } else {
-            qDebug() << "Invalid auction data, expected 7 fields, got:" << fields.size();
         }
     }
     
-    qDebug() << "Total auctions parsed:" << auctions.size();
     emit auctionListReceived(auctions);
 }
 void NetworkManager::sendSellerHistory(int userId)
@@ -622,7 +612,17 @@ void NetworkManager::parseNotification(const QStringList& parts)
     
     emit newBid(auctionId, amount, bidder);
 }
-    else if (type == "NOTIF_WARNING") {
+else if (type == "NOTIF_AUCTION_QUEUED") {
+        // Format: NOTIF_AUCTION_QUEUED|auctionId|title|seller|position
+        emit notification(type, parts.mid(1).join("|"));
+    }
+    else if (type == "NOTIF_AUCTION_START") {
+        // Format: NOTIF_AUCTION_START|auctionId|title|seller|...
+        emit notification(type, parts.mid(1).join("|"));
+    }
+    else if (type == "NOTIF_QUEUE_EMPTY") {
+        emit notification(type, "");
+    }   else if (type == "NOTIF_WARNING") {
         // Auction ending soon: NOTIF_WARNING|auctionId|secondsLeft
         emit auctionWarning(parts.value(1).toInt(), 
                            parts.value(2).toInt());

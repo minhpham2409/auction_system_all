@@ -49,5 +49,5 @@ int db_get_full_auction_details(int auction_id, Auction *auction, char *seller_n
 int db_check_auction_expired(int auction_id);
 int db_end_auction(int auction_id, int winner_id, const char *method);
 int db_get_all_active_auctions(Auction *auctions, int max_count);
-
+int db_activate_auction(int auction_id, int seller_id);
 #endif  

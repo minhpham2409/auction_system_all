@@ -22,6 +22,8 @@ public:
     int totalBids;
     qint64 endTime;
     QString status;
+    int queuePosition;        // ← THÊM: vị trí trong hàng đợi
+    bool isQueued;            // ← THÊM: có đang trong queue không
     
     Auction() 
         : auctionId(0), 
@@ -33,7 +35,9 @@ public:
           minIncrement(1000.0),
           currentBidderId(0), 
           totalBids(0), 
-          endTime(0)
+          endTime(0),
+          queuePosition(0),   // ← THÊM: init = 0
+          isQueued(false)     // ← THÊM: init = false
     {}
     
     bool isActive() const { 
@@ -46,6 +50,11 @@ public:
     
     bool isEnded() const { 
         return status == "ended"; 
+    }
+    
+    // ← THÊM: Check nếu đang trong queue
+    bool isQueuedStatus() const {
+        return status == "queued";
     }
     
     bool canBid() const { 
@@ -66,6 +75,7 @@ public:
     QString getStatusText() const {
         if (isActive()) return "Đang đấu giá";
         if (isWaiting()) return "Chờ kích hoạt";
+        if (isQueuedStatus()) return QString("Hàng đợi #%1").arg(queuePosition);  // ← THÊM
         if (isEnded()) return "Đã kết thúc";
         return "Không xác định";
     }

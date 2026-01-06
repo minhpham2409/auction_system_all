@@ -17,6 +17,7 @@
 #include "../dialogs/createroomdialog.h"
 #include "../dialogs/createauctiondialog.h"
 #include "../utils/formatters.h"
+#include <algorithm>
 MainWindow::MainWindow(NetworkManager *net, const User& user, QWidget *parent)
     : QMainWindow(parent), 
       network(net), 
@@ -111,6 +112,12 @@ void MainWindow::onAuctionDeletedBroadcast(int auctionId, QString title)
     if (currentUser.isInRoom()) {
         network->sendListAuctions(currentUser.currentRoomId);
     }
+}
+void MainWindow::onRoomCreated(int roomId)
+{
+    Q_UNUSED(roomId);
+    addLogMessage("✅ Tạo phòng thành công!", "SUCCESS");
+    network->sendListRooms();
 }
 void MainWindow::checkAuctionWarnings()
 {
@@ -312,52 +319,58 @@ topBar->addWidget(logoutBtn);
     
     QGridLayout *auctionBtns = new QGridLayout();
     auctionBtns->setSpacing(8);
-    
     QPushButton *createAuctionBtn = createStyledButton("➕ Tạo", "#2196f3");
-    QPushButton *viewDetailsBtn = createStyledButton("👁️ Chi tiết", "#009688");
-    QPushButton *activateBtn = createStyledButton("▶️ Kích hoạt", "#ff9800");
-    QPushButton *deleteBtn = createStyledButton("🗑️ Xóa", "#f44336");
-    QPushButton *searchBtn = createStyledButton("🔍 Tìm", "#9c27b0");
-    QPushButton *bidHistoryBtn = createStyledButton("📊 Lịch sử giá", "#607d8b");
-    
-    connect(createAuctionBtn, &QPushButton::clicked, this, &MainWindow::on_createAuctionButton_clicked);
-    connect(viewDetailsBtn, &QPushButton::clicked, this, &MainWindow::on_viewAuctionDetailsButton_clicked);
-    connect(activateBtn, &QPushButton::clicked, this, &MainWindow::on_activateAuctionButton_clicked);
-    connect(deleteBtn, &QPushButton::clicked, this, &MainWindow::on_deleteAuctionButton_clicked);
-    connect(searchBtn, &QPushButton::clicked, this, &MainWindow::on_searchAuctionsButton_clicked);
-    connect(bidHistoryBtn, &QPushButton::clicked, this, &MainWindow::on_bidHistoryButton_clicked);
-    
-    auctionBtns->addWidget(createAuctionBtn, 0, 0);
-    auctionBtns->addWidget(viewDetailsBtn, 0, 1);
-    auctionBtns->addWidget(activateBtn, 0, 2);
-    auctionBtns->addWidget(deleteBtn, 1, 0);
-    auctionBtns->addWidget(searchBtn, 1, 1);
-    auctionBtns->addWidget(bidHistoryBtn, 1, 2);
+QPushButton *viewDetailsBtn = createStyledButton("👁️ Chi tiết", "#009688");
+QPushButton *activateBtn = createStyledButton("▶️ Kích hoạt", "#ff9800");
+
+// ✅ FIX: Gán vào member variable
+deleteAuctionButton = createStyledButton("🗑️ Xóa", "#f44336");
+deleteAuctionButton->setStyleSheet(deleteAuctionButton->styleSheet() +
+    "QPushButton:disabled { background: #CCCCCC; color: #666666; }");
+
+QPushButton *searchBtn = createStyledButton("🔍 Tìm", "#9c27b0");
+QPushButton *bidHistoryBtn = createStyledButton("📊 Lịch sử giá", "#607d8b");
+
+connect(createAuctionBtn, &QPushButton::clicked, this, &MainWindow::on_createAuctionButton_clicked);
+connect(viewDetailsBtn, &QPushButton::clicked, this, &MainWindow::on_viewAuctionDetailsButton_clicked);
+connect(activateBtn, &QPushButton::clicked, this, &MainWindow::on_activateAuctionButton_clicked);
+connect(deleteAuctionButton, &QPushButton::clicked, this, &MainWindow::on_deleteAuctionButton_clicked);
+connect(searchBtn, &QPushButton::clicked, this, &MainWindow::on_searchAuctionsButton_clicked);
+connect(bidHistoryBtn, &QPushButton::clicked, this, &MainWindow::on_bidHistoryButton_clicked);
+
+auctionBtns->addWidget(createAuctionBtn, 0, 0);
+auctionBtns->addWidget(viewDetailsBtn, 0, 1);
+auctionBtns->addWidget(activateBtn, 0, 2);
+auctionBtns->addWidget(deleteAuctionButton, 1, 0);
+auctionBtns->addWidget(searchBtn, 1, 1);
+auctionBtns->addWidget(bidHistoryBtn, 1, 2);
     centerLayout->addLayout(auctionBtns);
     
     QHBoxLayout *bidBtns = new QHBoxLayout();
     bidBtns->setSpacing(10);
-    
-    QPushButton *bidBtn = new QPushButton("💰 ĐẶT GIÁ");
-    bidBtn->setStyleSheet(
-        "QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f093fb, stop:1 #f5576c); "
-        "color: white; border: none; padding: 18px; border-radius: 10px; "
-        "font-size: 18px; font-weight: bold; } "
-        "QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #e084eb, stop:1 #e5475c); }"
-    );
-    
-    QPushButton *buyBtn = new QPushButton("⚡ MUA NGAY");
-    buyBtn->setStyleSheet(
-        "QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4facfe, stop:1 #00f2fe); "
-        "color: white; border: none; padding: 18px; border-radius: 10px; "
-        "font-size: 18px; font-weight: bold; } "
-        "QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3f9cee, stop:1 #00e2ee); }"
-    );
-    
-    connect(bidBtn, &QPushButton::clicked, this, &MainWindow::on_placeBidButton_clicked);
-    connect(buyBtn, &QPushButton::clicked, this, &MainWindow::on_buyNowButton_clicked);
-    bidBtns->addWidget(bidBtn);
-    bidBtns->addWidget(buyBtn);
+   // ✅ FIX: Gán vào member variables thay vì local variables
+bidButton = new QPushButton("💰 ĐẶT GIÁ");
+bidButton->setStyleSheet(
+    "QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f093fb, stop:1 #f5576c); "
+    "color: white; border: none; padding: 18px; border-radius: 10px; "
+    "font-size: 18px; font-weight: bold; } "
+    "QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #e084eb, stop:1 #e5475c); } "
+    "QPushButton:disabled { background: #CCCCCC; color: #666666; }"  // ← THÊM disabled style
+);
+
+buyNowButton = new QPushButton("⚡ MUA NGAY");
+buyNowButton->setStyleSheet(
+    "QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4facfe, stop:1 #00f2fe); "
+    "color: white; border: none; padding: 18px; border-radius: 10px; "
+    "font-size: 18px; font-weight: bold; } "
+    "QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3f9cee, stop:1 #00e2ee); } "
+    "QPushButton:disabled { background: #CCCCCC; color: #666666; }"  // ← THÊM disabled style
+);
+
+connect(bidButton, &QPushButton::clicked, this, &MainWindow::on_placeBidButton_clicked);
+connect(buyNowButton, &QPushButton::clicked, this, &MainWindow::on_buyNowButton_clicked);
+bidBtns->addWidget(bidButton);
+bidBtns->addWidget(buyNowButton);
     centerLayout->addLayout(bidBtns);
     
     splitter->addWidget(centerPanel);
@@ -485,13 +498,58 @@ Room MainWindow::getSelectedRoom() const
     int row = roomsList->currentRow();
     return (row >= 0 && row < rooms.size()) ? rooms[row] : Room();
 }
-
+// File: windows/mainwindow.cpp
+// Thay thế hàm getSelectedAuction() (dòng 490-494)
 Auction MainWindow::getSelectedAuction() const
 {
-    int row = auctionsList->currentRow();
-    return (row >= 0 && row < auctions.size()) ? auctions[row] : Auction();
+    QListWidgetItem* item = auctionsList->currentItem();
+    if (!item) {
+        qDebug() << "[GET AUCTION] No item selected";
+        return Auction();
+    }
+    
+    // Get index and text for debugging
+    int row = auctionsList->row(item);
+    QString itemText = item->text();
+    
+    qDebug() << "========================================";
+    qDebug() << "[GET AUCTION] Selected item:";
+    qDebug() << "  - Row:" << row;
+    qDebug() << "  - Text:" << itemText;
+    
+    // Get auctionId from UserRole
+    QVariant userData = item->data(Qt::UserRole);
+    qDebug() << "  - UserRole data:" << userData;
+    
+    int auctionId = userData.toInt();
+    qDebug() << "  - Parsed ID:" << auctionId;
+    
+    if (auctionId <= 0) {
+        qDebug() << "[GET AUCTION] Invalid auction ID (probably header/separator)";
+        qDebug() << "========================================";
+        return Auction();
+    }
+    
+    // Search in auction list
+    for (const Auction& auction : auctions) {
+        if (auction.auctionId == auctionId) {
+            qDebug() << "[GET AUCTION] Found auction:";
+            qDebug() << "  - ID:" << auction.auctionId;
+            qDebug() << "  - Title:" << auction.title;
+            qDebug() << "  - Status:" << auction.status;
+            qDebug() << "  - Current Price:" << auction.currentPrice;
+            qDebug() << "  - Buy Now:" << auction.buyNowPrice;
+            qDebug() << "========================================";
+            return auction;
+        }
+    }
+    
+    qDebug() << "[GET AUCTION] ERROR: Auction ID" << auctionId 
+             << "not found in local list!";
+    qDebug() << "[GET AUCTION] Local list has" << auctions.size() << "auctions";
+    qDebug() << "========================================";
+    return Auction();
 }
-
 bool MainWindow::userHasActiveBids()
 {
     for (const Auction& a : auctions) {
@@ -799,28 +857,66 @@ void MainWindow::on_placeBidButton_clicked()
         network->sendPlaceBid(auction.auctionId, currentUser.userId, amount);
     }
 }
-
 void MainWindow::on_buyNowButton_clicked()
 {
     Auction auction = getSelectedAuction();
+    
+    qDebug() << "========================================";
+    qDebug() << "[BUY NOW] Button clicked!";
+    qDebug() << "[BUY NOW] Selected auction:" << auction.auctionId;
+    qDebug() << "[BUY NOW] Title:" << auction.title;
+    qDebug() << "[BUY NOW] Status:" << auction.status;
+    qDebug() << "========================================";
+    
     if (auction.auctionId == 0) {
+        qDebug() << "[BUY NOW] ERROR: No auction selected!";
         showError("Lỗi", "Chọn sản phẩm");
         return;
     }
     
-    if (!auction.hasBuyNow()) {
-        showError("Lỗi", "Không có giá mua ngay");
+    // ✅ CRITICAL: Double-check status before sending
+    if (auction.status != "active") {
+        qDebug() << "[BUY NOW] ERROR: Auction not active!";
+        QString statusMsg;
+        if (auction.status == "queued") {
+            statusMsg = "đang trong hàng đợi, chưa bắt đầu";
+        } else if (auction.status == "ended") {
+            statusMsg = "đã kết thúc";
+        } else if (auction.status == "waiting") {
+            statusMsg = "đang chờ bắt đầu";
+        } else {
+            statusMsg = "không hoạt động";
+        }
+        showError("Lỗi", QString("Sản phẩm '%1' %2, không thể mua ngay!")
+            .arg(auction.title).arg(statusMsg));
         return;
     }
     
-    auto reply = QMessageBox::question(this, "Xác nhận",
-        QString("Mua %1 với giá %2?")
+    if (!auction.hasBuyNow()) {
+        qDebug() << "[BUY NOW] ERROR: No buy now price!";
+        showError("Lỗi", "Sản phẩm không có giá mua ngay");
+        return;
+    }
+    
+    // ✅ FINAL CONFIRMATION with all details
+    auto reply = QMessageBox::question(this, "⚠️ XÁC NHẬN MUA NGAY",
+        QString("Bạn chắc chắn muốn MUA NGAY?\n\n"
+                "📦 Sản phẩm: %1\n"
+                "💰 Giá: %2\n"
+                "🆔 Mã SP: #%3\n\n"
+                "Số dư hiện tại: %4")
             .arg(auction.title)
-            .arg(Formatters::formatCurrency(auction.buyNowPrice)),
-        QMessageBox::Yes | QMessageBox::No);
+            .arg(Formatters::formatCurrency(auction.buyNowPrice))
+            .arg(auction.auctionId)
+            .arg(Formatters::formatCurrency(currentUser.balance)),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);  // Default to No for safety
     
     if (reply == QMessageBox::Yes) {
+        qDebug() << "[BUY NOW] Sending BUY_NOW command for auction" << auction.auctionId;
         network->sendBuyNow(auction.auctionId, currentUser.userId);
+    } else {
+        qDebug() << "[BUY NOW] User cancelled";
     }
 }
 
@@ -1056,66 +1152,275 @@ void MainWindow::onLeftRoom()
     queueList->clear();
     auctions.clear();
     addLogMessage(QString("Rời phòng: %1").arg(oldRoom), "INFO");
-}
-
-void MainWindow::onRoomCreated(int roomId)
+}void MainWindow::updateAuctionActionButtons()
 {
-    Q_UNUSED(roomId);
-    network->sendListRooms();
-}
-
-void MainWindow::onAuctionListReceived(const QList<Auction>& newAuctions)
-{
-    int currentRow = auctionsList->currentRow();
-    int selectedAuctionId = (currentRow >= 0 && currentRow < auctions.size()) ? 
-                           auctions[currentRow].auctionId : -1;
+    Auction auction = getSelectedAuction();
     
-    auctions = newAuctions;
+    qDebug() << "========================================";
+    qDebug() << "[UI DEBUG] Selected Auction:";
+    qDebug() << "  - ID:" << auction.auctionId;
+    qDebug() << "  - Title:" << auction.title;
+    qDebug() << "  - Status:" << auction.status;
+    qDebug() << "  - Current Price:" << auction.currentPrice;
+    qDebug() << "  - Buy Now Price:" << auction.buyNowPrice;
+    qDebug() << "========================================";
     
-    QList<Auction> activeAuctions, waitingAuctions;
-    for (const Auction& a : auctions) {
-        if (a.isActive()) {
-            activeAuctions.append(a);
-        } else if (a.isWaiting()) {
-            waitingAuctions.append(a);
+    bool isActive = (auction.auctionId > 0 && auction.status == "active");
+    bool hasValidAuction = (auction.auctionId > 0);
+    
+    // Bid button: Chỉ enable khi auction đang active
+    if (bidButton) {
+        bidButton->setEnabled(isActive);
+        bidButton->setToolTip(isActive ? 
+            "Đặt giá đấu giá" : 
+            "Chỉ có thể đấu giá khi sản phẩm đang active");
+        qDebug() << "[UI] Bid button enabled:" << isActive;
+    }
+    
+    // Buy Now button: Chỉ enable khi auction đang active VÀ có giá buy now
+    if (buyNowButton) {
+        bool canBuyNow = isActive && auction.hasBuyNow();
+        buyNowButton->setEnabled(canBuyNow);
+        
+        if (!isActive) {
+            buyNowButton->setToolTip("Sản phẩm không đang active");
+        } else if (!auction.hasBuyNow()) {
+            buyNowButton->setToolTip("Sản phẩm không có giá mua ngay");
+        } else {
+            buyNowButton->setToolTip(QString("Mua ngay với %1")
+                .arg(Formatters::formatCurrency(auction.buyNowPrice)));
+        }
+        
+        qDebug() << "[UI] Buy Now button enabled:" << canBuyNow;
+        qDebug() << "[UI]   - isActive:" << isActive;
+        qDebug() << "[UI]   - hasBuyNow:" << auction.hasBuyNow();
+    }
+    
+    // Delete button: Chỉ enable nếu user là seller
+    if (deleteAuctionButton) {
+        bool canDelete = hasValidAuction && 
+                        (auction.sellerName == currentUser.username) &&
+                        (auction.status == "queued" || auction.status == "waiting");
+        deleteAuctionButton->setEnabled(canDelete);
+        deleteAuctionButton->setToolTip(canDelete ?
+            "Xóa sản phẩm" :
+            "Chỉ có thể xóa sản phẩm đang chờ/trong hàng đợi của bạn");
+    }
+}void MainWindow::onAuctionListReceived(const QList<Auction>& auctions) {
+    this->auctions = auctions;
+    auctionsList->clear();
+    
+    qDebug() << "========================================";
+    qDebug() << "[AUCTION LIST] Received" << auctions.size() << "auctions";
+    
+    int activeCount = 0;
+    int queuedCount = 0;
+    int endedCount = 0;
+    
+    // Debug: Log all received auctions
+    for (const Auction& auction : auctions) {
+        qDebug() << "[AUCTION LIST]  -" << auction.auctionId << ":" 
+                 << auction.title << "| Status:" << auction.status;
+    }
+    
+    // === SECTION 1: ACTIVE AUCTIONS ===
+    bool hasActive = false;
+    for (const Auction& auction : auctions) {
+        if (auction.status == "active") {
+            hasActive = true;
+            break;
         }
     }
     
-    auctionsList->clear();
-    for (const Auction& a : activeAuctions) {
-        QString status = Formatters::formatTime(a.getTimeLeft());
-        QString text = QString("🔨 %1 | 💰 %2 | ⏱️ %3")
-            .arg(a.title)
-            .arg(Formatters::formatCurrency(a.currentPrice))
-            .arg(status);
-        auctionsList->addItem(text);
+    QListWidgetItem *firstActiveItem = nullptr;  // ← THÊM: Track first active item
+    
+    if (hasActive) {
+        // Add header
+        QListWidgetItem *activeHeader = new QListWidgetItem("━━━ 🔨 ĐANG ĐẤU GIÁ ━━━");
+        QFont headerFont = activeHeader->font();
+        headerFont.setBold(true);
+        activeHeader->setFont(headerFont);
+        activeHeader->setForeground(QColor("#4CAF50"));
+        activeHeader->setFlags(Qt::ItemIsEnabled); // Not selectable
+        activeHeader->setData(Qt::UserRole, 0);
+        auctionsList->addItem(activeHeader);
+        
+        // Add active auctions
+        for (const Auction& auction : auctions) {
+            if (auction.status != "active") continue;
+            
+            QString statusText = Formatters::formatTime(auction.getTimeLeft());
+            QString text = QString("   🔨 %1 | 💰 %2 | ⏱️ %3")
+                .arg(auction.title)
+                .arg(Formatters::formatCurrency(auction.currentPrice))
+                .arg(statusText);
+            
+            QListWidgetItem *item = new QListWidgetItem(text);
+            item->setData(Qt::UserRole, auction.auctionId);
+            item->setForeground(QColor("#4CAF50"));
+            
+            // ✅ Tooltip with full info
+            QString tooltip = QString("🆔 ID: %1\n"
+                                    "📦 Sản phẩm: %2\n"
+                                    "💰 Giá hiện tại: %3\n"
+                                    "⚡ Mua ngay: %4\n"
+                                    "⏱️ Thời gian còn lại: %5\n"
+                                    "🔨 Tổng lượt đấu: %6")
+                .arg(auction.auctionId)
+                .arg(auction.title)
+                .arg(Formatters::formatCurrency(auction.currentPrice))
+                .arg(auction.hasBuyNow() ? 
+                     Formatters::formatCurrency(auction.buyNowPrice) : "Không có")
+                .arg(statusText)
+                .arg(auction.totalBids);
+            item->setToolTip(tooltip);
+            
+            auctionsList->addItem(item);
+            activeCount++;
+            
+            // ✅ THÊM: Remember first active item
+            if (!firstActiveItem) {
+                firstActiveItem = item;
+            }
+            
+            qDebug() << "[AUCTION LIST]    + Added active:" << auction.auctionId 
+                     << auction.title;
+        }
     }
     
-    queueList->clear();
-    for (const Auction& a : waitingAuctions) {
-        QString text = QString("⏳ %1 - %2")
-            .arg(a.title)
-            .arg(Formatters::formatCurrency(a.startPrice));
-        queueList->addItem(text);
+    // === SECTION 2: QUEUED AUCTIONS ===
+    bool hasQueued = false;
+    for (const Auction& auction : auctions) {
+        if (auction.status == "queued") {
+            hasQueued = true;
+            break;
+        }
     }
     
-    if (selectedAuctionId > 0) {
-        for (int i = 0; i < auctions.size(); i++) {
-            if (auctions[i].auctionId == selectedAuctionId) {
-                int displayIndex = -1;
-                for (int j = 0; j < activeAuctions.size(); j++) {
-                    if (activeAuctions[j].auctionId == selectedAuctionId) {
-                        displayIndex = j;
-                        break;
-                    }
-                }
-                if (displayIndex >= 0) {
-                    auctionsList->setCurrentRow(displayIndex);
-                }
-                break;
+    if (hasQueued) {
+        // Add separator (if there were active auctions)
+        if (hasActive) {
+            QListWidgetItem *separator = new QListWidgetItem(" ");
+            separator->setFlags(Qt::ItemIsEnabled);
+            separator->setData(Qt::UserRole, 0);
+            auctionsList->addItem(separator);
+        }
+        
+        // Add header
+        QListWidgetItem *queueHeader = new QListWidgetItem("━━━ 📋 HÀNG ĐỢI ━━━");
+        QFont headerFont = queueHeader->font();
+        headerFont.setBold(true);
+        queueHeader->setFont(headerFont);
+        queueHeader->setForeground(QColor("#2196F3"));
+        queueHeader->setFlags(Qt::ItemIsEnabled);
+        queueHeader->setData(Qt::UserRole, 0);
+        auctionsList->addItem(queueHeader);
+        
+        // Add queued auctions (sorted by position)
+        QList<Auction> queuedList;
+        for (const Auction& auction : auctions) {
+            if (auction.status == "queued") {
+                queuedList.append(auction);
             }
         }
+        
+        // Sort by queue position
+        std::sort(queuedList.begin(), queuedList.end(), 
+                 [](const Auction& a, const Auction& b) {
+                     return a.queuePosition < b.queuePosition;
+                 });
+        
+        for (const Auction& auction : queuedList) {
+            QString text = QString("   📋 #%1 - %2 | 💰 %3")
+                .arg(auction.queuePosition)
+                .arg(auction.title)
+                .arg(Formatters::formatCurrency(auction.startPrice));
+            
+            QListWidgetItem *item = new QListWidgetItem(text);
+            item->setData(Qt::UserRole, auction.auctionId);
+            item->setForeground(QColor("#2196F3"));
+            
+            // ✅ Tooltip for queued auctions
+            QString tooltip = QString("🆔 ID: %1\n"
+                                    "📦 Sản phẩm: %2\n"
+                                    "📋 Vị trí trong hàng đợi: #%3\n"
+                                    "💰 Giá khởi điểm: %4\n"
+                                    "⚡ Mua ngay: %5\n"
+                                    "⚠️ Trạng thái: Đang chờ đấu giá")
+                .arg(auction.auctionId)
+                .arg(auction.title)
+                .arg(auction.queuePosition)
+                .arg(Formatters::formatCurrency(auction.startPrice))
+                .arg(auction.hasBuyNow() ? 
+                     Formatters::formatCurrency(auction.buyNowPrice) : "Không có");
+            item->setToolTip(tooltip);
+            
+            auctionsList->addItem(item);
+            queuedCount++;
+            
+            qDebug() << "[AUCTION LIST]    + Added queued:" << auction.auctionId 
+                     << auction.title << "at position" << auction.queuePosition;
+        }
     }
+    
+    // === SECTION 3: ENDED AUCTIONS ===
+    for (const Auction& auction : auctions) {
+        if (auction.status == "ended") {
+            endedCount++;
+        }
+    }
+    
+    if (endedCount > 0) {
+        if (hasActive || hasQueued) {
+            QListWidgetItem *separator = new QListWidgetItem(" ");
+            separator->setFlags(Qt::ItemIsEnabled);
+            separator->setData(Qt::UserRole, 0);
+            auctionsList->addItem(separator);
+        }
+        
+        QListWidgetItem *endedInfo = new QListWidgetItem(
+            QString("━━━ ✅ ĐÃ KẾT THÚC: %1 sản phẩm ━━━").arg(endedCount));
+        QFont infoFont = endedInfo->font();
+        infoFont.setItalic(true);
+        endedInfo->setFont(infoFont);
+        endedInfo->setForeground(QColor("#999999"));
+        endedInfo->setFlags(Qt::ItemIsEnabled);
+        endedInfo->setData(Qt::UserRole, 0);
+        endedInfo->setToolTip("Các sản phẩm đã kết thúc không hiển thị để giữ giao diện gọn");
+        auctionsList->addItem(endedInfo);
+    }
+    
+    // === SUMMARY ===
+    qDebug() << "[AUCTION LIST] Summary:";
+    qDebug() << "[AUCTION LIST]   - Active:" << activeCount;
+    qDebug() << "[AUCTION LIST]   - Queued:" << queuedCount;
+    qDebug() << "[AUCTION LIST]   - Ended:" << endedCount;
+    qDebug() << "========================================";
+    
+    // Empty state
+    if (activeCount == 0 && queuedCount == 0) {
+        QListWidgetItem *emptyItem = new QListWidgetItem("📭 Không có phiên đấu giá nào");
+        emptyItem->setFlags(Qt::ItemIsEnabled);
+        emptyItem->setData(Qt::UserRole, 0);
+        emptyItem->setForeground(QColor("#999999"));
+        QFont emptyFont = emptyItem->font();
+        emptyFont.setItalic(true);
+        emptyItem->setFont(emptyFont);
+        auctionsList->addItem(emptyItem);
+    }
+    
+    // ✅ FIX CHÍNH: Tự động select auction active đầu tiên
+    if (firstActiveItem) {
+        auctionsList->setCurrentItem(firstActiveItem);
+        qDebug() << "[AUCTION LIST] ✅ Auto-selected first active auction";
+    } else {
+        // Nếu không có active, clear selection
+        auctionsList->clearSelection();
+        qDebug() << "[AUCTION LIST] No active auctions, cleared selection";
+    }
+    
+    // ✅ Update button states AFTER selection
+    updateAuctionActionButtons();
 }void MainWindow::onSearchResultsReceived(const QString& results)
 {
     qDebug() << "========================================";
@@ -1695,10 +2000,45 @@ table->setHorizontalHeaderLabels({
     
     dialog->exec();
     delete dialog;
-}
-void MainWindow::onNotification(const QString& type, const QString& message)
-{
-    Q_UNUSED(type); Q_UNUSED(message);
+}void MainWindow::onNotification(const QString& type, const QString& data) {
+    QStringList parts = data.split("|");
+    
+    // ... existing notification handlers ...
+    
+    if (type == "NOTIF_AUCTION_QUEUED") {
+        // Format: auctionId|title|seller|position
+        QString title = parts.value(1);
+        int position = parts.value(3).toInt();
+        
+        addLogMessage(QString("📋 %1 added to queue (position %2)")
+            .arg(title).arg(position), "INFO");
+        
+        // Refresh auction list
+        if (currentUser.isInRoom()) {
+            network->sendListAuctions(currentUser.currentRoomId);
+        }
+    }
+    else if (type == "NOTIF_AUCTION_START") {
+        // Format: auctionId|title|seller|startPrice|buyNowPrice|minIncrement|duration
+        QString title = parts.value(1);
+        QString seller = parts.value(2);
+        
+        addLogMessage(QString("🎬 Auction started: %1 by %2")
+            .arg(title).arg(seller), "SUCCESS");
+        
+        // Optional: Show popup
+        QMessageBox::information(this, "Auction Started",
+            QString("🎬 Next auction has started!\n\n%1\nSeller: %2")
+            .arg(title).arg(seller));
+        
+        // Refresh list
+        if (currentUser.isInRoom()) {
+            network->sendListAuctions(currentUser.currentRoomId);
+        }
+    }
+    else if (type == "NOTIF_QUEUE_EMPTY") {
+        addLogMessage("📭 Queue is empty - No more auctions", "INFO");
+    }
 }
 void MainWindow::onNewBid(int auctionId, double amount, const QString& bidder)
 {
@@ -1958,10 +2298,12 @@ void MainWindow::onDisconnected()
     delete endBox;
 }void MainWindow::onAuctionEnded(int auctionId, const QString& winner, double finalPrice)
 {
+    qDebug() << "[DEBUG] Auction ended:" << auctionId << "Winner:" << winner;
+    
     // Remove from warned list
     warnedAuctions.remove(auctionId);
     
-    // Find auction
+    // Find auction for popup
     Auction endedAuction;
     for (const Auction& a : auctions) {
         if (a.auctionId == auctionId) {
@@ -1979,7 +2321,28 @@ void MainWindow::onDisconnected()
         .arg(winner)
         .arg(Formatters::formatCurrency(finalPrice)), "WIN");
     
+    // REMOVE from UI list immediately
+    for (int i = 0; i < auctionsList->count(); i++) {
+        QListWidgetItem *item = auctionsList->item(i);
+        if (item && item->data(Qt::UserRole).toInt() == auctionId) {
+            qDebug() << "[UI] Removing ended auction" << auctionId << "from list at index" << i;
+            delete auctionsList->takeItem(i);
+            break;
+        }
+    }
+    
+    // REMOVE from data array
+    for (int i = 0; i < auctions.size(); i++) {
+        if (auctions[i].auctionId == auctionId) {
+            qDebug() << "[DATA] Removing auction" << auctionId << "from array at index" << i;
+            auctions.removeAt(i);
+            break;
+        }
+    }
+    
+    // Refresh to sync with server
     if (currentUser.isInRoom()) {
+        qDebug() << "[REFRESH] Requesting fresh auction list";
         network->sendListAuctions(currentUser.currentRoomId);
     }
 }
