@@ -611,18 +611,24 @@ void NetworkManager::parseNotification(const QStringList& parts)
     int timeLeft = parts.value(5).toInt();
     
     emit newBid(auctionId, amount, bidder);
+}else if (type == "NOTIF_AUCTION_QUEUED") {
+    emit notification(type, parts.mid(1).join("|"));
 }
-else if (type == "NOTIF_AUCTION_QUEUED") {
-        // Format: NOTIF_AUCTION_QUEUED|auctionId|title|seller|position
-        emit notification(type, parts.mid(1).join("|"));
-    }
-    else if (type == "NOTIF_AUCTION_START") {
-        // Format: NOTIF_AUCTION_START|auctionId|title|seller|...
-        emit notification(type, parts.mid(1).join("|"));
-    }
-    else if (type == "NOTIF_QUEUE_EMPTY") {
-        emit notification(type, "");
-    }   else if (type == "NOTIF_WARNING") {
+else if (type == "NOTIF_AUCTION_START") {
+    emit notification(type, parts.mid(1).join("|"));
+}
+// ✅ THÊM: Handler cho NOTIF_AUCTION_STARTED (từ queue)
+else if (type == "NOTIF_AUCTION_STARTED") {
+    int auctionId = parts.value(1).toInt();
+    QString title = parts.value(2);
+    qDebug() << "[QUEUE] Auction started from queue:" << auctionId << title;
+    
+    emit notification(type, QString("🔨 Đấu giá bắt đầu: %1").arg(title));
+    emit auctionStarted(auctionId);
+}
+else if (type == "NOTIF_QUEUE_EMPTY") {
+    emit notification(type, "");
+}   else if (type == "NOTIF_WARNING") {
         // Auction ending soon: NOTIF_WARNING|auctionId|secondsLeft
         emit auctionWarning(parts.value(1).toInt(), 
                            parts.value(2).toInt());

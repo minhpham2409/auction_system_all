@@ -181,6 +181,22 @@ int queue_get_current_auction(int room_id) {
 }
 // Start next auction in queue
 int queue_start_next_auction(int room_id) {
+    sqlite3_stmt *check_stmt;
+    const char *check_sql = "SELECT auction_id FROM auctions "
+                           "WHERE room_id = ? AND status = 'active'";
+    
+    sqlite3_prepare_v2(g_db, check_sql, -1, &check_stmt, NULL);
+    sqlite3_bind_int(check_stmt, 1, room_id);
+    
+    if (sqlite3_step(check_stmt) == SQLITE_ROW) {
+        int active_id = sqlite3_column_int(check_stmt, 0);
+        sqlite3_finalize(check_stmt);
+        
+        printf("[QUEUE] ❌ Room %d already has active auction %d, cannot start next\n", 
+               room_id, active_id);
+        return -1;
+    }
+    sqlite3_finalize(check_stmt);
     int next_auction_id = queue_get_next_auction(room_id);
     
     if (next_auction_id <= 0) {
@@ -251,16 +267,14 @@ int queue_start_next_auction(int room_id) {
            next_auction_id, auction.title, room_id);
     
     return 0;  // ✅ Trả về 0 nếu thành công
-}
-void* queue_auto_processor_thread(void *arg) {
+}void* queue_auto_processor_thread(void *arg) {
     (void)arg;
     
     printf("[QUEUE] Auto-processor thread started\n");
     
     while (queue_processor_running) {
-        sleep(5);  // Check every 5 seconds
+        sleep(5);
         
-        // Get all rooms with auto mode
         sqlite3_stmt *stmt;
         const char *sql = "SELECT room_id, auto_start_delay FROM room_queue_state "
                          "WHERE queue_mode = 'auto'";
@@ -273,7 +287,27 @@ void* queue_auto_processor_thread(void *arg) {
             int room_id = sqlite3_column_int(stmt, 0);
             int delay = sqlite3_column_int(stmt, 1);
             
-            // Check if current auction exists and its status
+            // ✅ FIX: Kiểm tra có auction ACTIVE trong room không
+            sqlite3_stmt *check_stmt;
+            const char *check_sql = "SELECT COUNT(*) FROM auctions "
+                                   "WHERE room_id = ? AND status = 'active'";
+            
+            int has_active = 0;
+            if (sqlite3_prepare_v2(g_db, check_sql, -1, &check_stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int(check_stmt, 1, room_id);
+                if (sqlite3_step(check_stmt) == SQLITE_ROW) {
+                    has_active = sqlite3_column_int(check_stmt, 0);
+                }
+                sqlite3_finalize(check_stmt);
+            }
+            
+            // ✅ CRITICAL: Chỉ start nếu KHÔNG CÓ auction active
+            if (has_active > 0) {
+                printf("[QUEUE] Room %d already has active auction, skipping\n", room_id);
+                continue;  // ← SKIP room này
+            }
+            
+            // Tiếp tục logic cũ...
             int current_auction_id = queue_get_current_auction(room_id);
             
             if (current_auction_id <= 0) {
@@ -289,7 +323,6 @@ void* queue_auto_processor_thread(void *arg) {
                 Auction current;
                 if (db_get_auction(current_auction_id, &current) == 0) {
                     if (strcmp(current.status, "ended") == 0) {
-                        // Wait for delay period
                         time_t now = time(NULL);
                         time_t end_plus_delay = current.end_time + delay;
                         
@@ -298,7 +331,6 @@ void* queue_auto_processor_thread(void *arg) {
                             int result = queue_start_next_auction(room_id);
                             
                             if (result <= 0) {
-                                // No more auctions, clear current
                                 const char *sql_clear = "UPDATE room_queue_state "
                                                        "SET current_auction_id = NULL "
                                                        "WHERE room_id = ?";
@@ -312,7 +344,6 @@ void* queue_auto_processor_thread(void *arg) {
                             }
                         }
                     }
-                    // ELSE: Auction still active, do nothing
                 }
             }
         }

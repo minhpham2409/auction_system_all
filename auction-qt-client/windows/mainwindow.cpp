@@ -37,6 +37,7 @@ MainWindow::MainWindow(NetworkManager *net, const User& user, QWidget *parent)
     
     
     // Connect ALL signals
+    connect(network, &NetworkManager::auctionStarted, this, &MainWindow::onAuctionStarted);
     connect(network, &NetworkManager::searchResultsReceived, this, &MainWindow::onSearchResultsReceived);
     connect(network, &NetworkManager::sellerHistoryReceived,  // ← THÊM
         this, &MainWindow::onSellerHistoryReceived);
@@ -437,7 +438,18 @@ void MainWindow::updateRoomStatus()
         );
     }
 }
-
+void MainWindow::onAuctionStarted(int auctionId)
+{
+    qDebug() << "[QUEUE] Auction started:" << auctionId;
+    
+    // Refresh ngay lập tức
+    if (currentUser.isInRoom()) {
+        qDebug() << "[REFRESH] Auto-refreshing for new auction from queue";
+        network->sendListAuctions(currentUser.currentRoomId);
+    }
+    
+    addLogMessage(QString("🔨 Đấu giá mới bắt đầu!"), "INFO");
+}
 void MainWindow::addLogMessage(const QString& message, const QString& type)
 {
     QString color, icon;
@@ -1161,51 +1173,135 @@ void MainWindow::onLeftRoom()
     qDebug() << "  - ID:" << auction.auctionId;
     qDebug() << "  - Title:" << auction.title;
     qDebug() << "  - Status:" << auction.status;
+    qDebug() << "  - Seller Name:" << auction.sellerName;
+    qDebug() << "  - Seller ID:" << auction.sellerId;
+    qDebug() << "  - Current User:" << currentUser.username;
+    qDebug() << "  - Current User ID:" << currentUser.userId;
     qDebug() << "  - Current Price:" << auction.currentPrice;
     qDebug() << "  - Buy Now Price:" << auction.buyNowPrice;
+    qDebug() << "  - Total Bids:" << auction.totalBids;
     qDebug() << "========================================";
     
-    bool isActive = (auction.auctionId > 0 && auction.status == "active");
     bool hasValidAuction = (auction.auctionId > 0);
+    bool isActive = (hasValidAuction && auction.status == "active");
     
-    // Bid button: Chỉ enable khi auction đang active
+    // ═══════════════════════════════════════════════════════
+    // BID BUTTON
+    // ═══════════════════════════════════════════════════════
     if (bidButton) {
-        bidButton->setEnabled(isActive);
-        bidButton->setToolTip(isActive ? 
-            "Đặt giá đấu giá" : 
-            "Chỉ có thể đấu giá khi sản phẩm đang active");
-        qDebug() << "[UI] Bid button enabled:" << isActive;
+        // Chỉ enable khi:
+        // 1. Auction đang active
+        // 2. User KHÔNG phải seller (không đấu giá sản phẩm của mình)
+        bool isSeller = (auction.sellerName == currentUser.username || 
+                        auction.sellerId == currentUser.userId);
+        bool canBid = isActive && !isSeller;
+        
+        bidButton->setEnabled(canBid);
+        
+        if (!hasValidAuction) {
+            bidButton->setToolTip("Chọn một sản phẩm để đấu giá");
+        } else if (!isActive) {
+            bidButton->setToolTip("Chỉ có thể đấu giá khi sản phẩm đang active");
+        } else if (isSeller) {
+            bidButton->setToolTip("Không thể đấu giá sản phẩm của chính mình");
+        } else {
+            bidButton->setToolTip(QString("Đặt giá tối thiểu: %1")
+                .arg(Formatters::formatCurrency(auction.currentPrice + auction.minIncrement)));
+        }
+        
+        qDebug() << "[UI] Bid button:";
+        qDebug() << "  - enabled:" << canBid;
+        qDebug() << "  - isActive:" << isActive;
+        qDebug() << "  - isSeller:" << isSeller;
     }
     
-    // Buy Now button: Chỉ enable khi auction đang active VÀ có giá buy now
+    // ═══════════════════════════════════════════════════════
+    // BUY NOW BUTTON
+    // ═══════════════════════════════════════════════════════
     if (buyNowButton) {
-        bool canBuyNow = isActive && auction.hasBuyNow();
+        // Chỉ enable khi:
+        // 1. Auction đang active
+        // 2. Có giá mua ngay
+        // 3. User KHÔNG phải seller
+        bool isSeller = (auction.sellerName == currentUser.username || 
+                        auction.sellerId == currentUser.userId);
+        bool canBuyNow = isActive && auction.hasBuyNow() && !isSeller;
+        
         buyNowButton->setEnabled(canBuyNow);
         
-        if (!isActive) {
+        if (!hasValidAuction) {
+            buyNowButton->setToolTip("Chọn một sản phẩm để mua ngay");
+        } else if (!isActive) {
             buyNowButton->setToolTip("Sản phẩm không đang active");
         } else if (!auction.hasBuyNow()) {
             buyNowButton->setToolTip("Sản phẩm không có giá mua ngay");
+        } else if (isSeller) {
+            buyNowButton->setToolTip("Không thể mua sản phẩm của chính mình");
         } else {
             buyNowButton->setToolTip(QString("Mua ngay với %1")
                 .arg(Formatters::formatCurrency(auction.buyNowPrice)));
         }
         
-        qDebug() << "[UI] Buy Now button enabled:" << canBuyNow;
-        qDebug() << "[UI]   - isActive:" << isActive;
-        qDebug() << "[UI]   - hasBuyNow:" << auction.hasBuyNow();
+        qDebug() << "[UI] Buy Now button:";
+        qDebug() << "  - enabled:" << canBuyNow;
+        qDebug() << "  - isActive:" << isActive;
+        qDebug() << "  - hasBuyNow:" << auction.hasBuyNow();
+        qDebug() << "  - isSeller:" << isSeller;
     }
     
-    // Delete button: Chỉ enable nếu user là seller
+    // ═══════════════════════════════════════════════════════
+    // DELETE BUTTON
+    // ═══════════════════════════════════════════════════════
     if (deleteAuctionButton) {
-        bool canDelete = hasValidAuction && 
-                        (auction.sellerName == currentUser.username) &&
-                        (auction.status == "queued" || auction.status == "waiting");
+        // Có thể xóa khi:
+        // 1. User là seller (chủ sản phẩm)
+        // 2. Auction chưa bắt đầu (queued/waiting) HOẶC
+        // 3. Auction đang active NHƯNG chưa có ai đấu giá
+        
+        bool isSeller = hasValidAuction && 
+                       (auction.sellerName == currentUser.username ||
+                        auction.sellerId == currentUser.userId);
+        
+        bool canDeleteStatus = (auction.status == "queued" || 
+                               auction.status == "waiting" ||
+                               (auction.status == "active" && auction.totalBids == 0));
+        
+        bool canDelete = isSeller && canDeleteStatus;
+        
         deleteAuctionButton->setEnabled(canDelete);
-        deleteAuctionButton->setToolTip(canDelete ?
-            "Xóa sản phẩm" :
-            "Chỉ có thể xóa sản phẩm đang chờ/trong hàng đợi của bạn");
+        
+        // Tooltip chi tiết
+        if (!hasValidAuction) {
+            deleteAuctionButton->setToolTip("Chọn một sản phẩm để xóa");
+        } else if (!isSeller) {
+            deleteAuctionButton->setToolTip("Chỉ chủ sản phẩm mới có thể xóa");
+        } else if (!canDeleteStatus) {
+            if (auction.status == "active" && auction.totalBids > 0) {
+                deleteAuctionButton->setToolTip(QString("Không thể xóa - đã có %1 người đấu giá")
+                    .arg(auction.totalBids));
+            } else if (auction.status == "ended") {
+                deleteAuctionButton->setToolTip("Không thể xóa - đấu giá đã kết thúc");
+            } else {
+                deleteAuctionButton->setToolTip("Không thể xóa ở trạng thái này");
+            }
+        } else {
+            deleteAuctionButton->setToolTip("Xóa sản phẩm");
+        }
+        
+        qDebug() << "[UI] Delete button:";
+        qDebug() << "  - enabled:" << canDelete;
+        qDebug() << "  - hasValidAuction:" << hasValidAuction;
+        qDebug() << "  - isSeller:" << isSeller;
+        qDebug() << "  - auction.sellerName:" << auction.sellerName;
+        qDebug() << "  - currentUser.username:" << currentUser.username;
+        qDebug() << "  - auction.sellerId:" << auction.sellerId;
+        qDebug() << "  - currentUser.userId:" << currentUser.userId;
+        qDebug() << "  - canDeleteStatus:" << canDeleteStatus;
+        qDebug() << "  - auction.status:" << auction.status;
+        qDebug() << "  - auction.totalBids:" << auction.totalBids;
     }
+    
+    qDebug() << "========================================";
 }void MainWindow::onAuctionListReceived(const QList<Auction>& auctions) {
     this->auctions = auctions;
     auctionsList->clear();

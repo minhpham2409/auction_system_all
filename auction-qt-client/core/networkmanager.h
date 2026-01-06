@@ -61,6 +61,7 @@ signals:
     void disconnected();
     void connectionError(const QString& error);
     void searchResultsReceived(const QString& results); 
+    void auctionStarted(int auctionId);
     // Response signals
     void loginSuccess(User user);
     void loginFailed(const QString& reason);

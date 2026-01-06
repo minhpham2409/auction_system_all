@@ -37,7 +37,7 @@ MOVE          = mv -f
 TAR           = tar -cf
 COMPRESS      = gzip -9f
 DISTNAME      = AuctionClientQt1.0.0
-DISTDIR = /home/minhp/prj/auction-qt-client/.tmp/AuctionClientQt1.0.0
+DISTDIR = /home/minhp/prj/auction_system_all/auction-qt-client/.tmp/AuctionClientQt1.0.0
 LINK          = g++
 LFLAGS        = -Wl,-O1 -pipe -O2 -std=gnu++1z -flto=8 -fno-fat-lto-objects -fuse-linker-plugin -fPIC
 LIBS          = $(SUBLIBS) /usr/lib/libQt5Widgets.so /usr/lib/libQt5Gui.so /usr/lib/libQt5Network.so /usr/lib/libQt5Core.so -lGL -lpthread   
@@ -541,7 +541,7 @@ moc_networkmanager.cpp: core/networkmanager.h \
 		models/auction.h \
 		moc_predefs.h \
 		/usr/bin/moc
-	/usr/bin/moc $(DEFINES) --include /home/minhp/prj/auction-qt-client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/minhp/prj/auction-qt-client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/15.2.1 -I/usr/include/c++/15.2.1/x86_64-pc-linux-gnu -I/usr/include/c++/15.2.1/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include-fixed -I/usr/include core/networkmanager.h -o moc_networkmanager.cpp
+	/usr/bin/moc $(DEFINES) --include /home/minhp/prj/auction_system_all/auction-qt-client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/minhp/prj/auction_system_all/auction-qt-client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/15.2.1 -I/usr/include/c++/15.2.1/x86_64-pc-linux-gnu -I/usr/include/c++/15.2.1/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include-fixed -I/usr/include core/networkmanager.h -o moc_networkmanager.cpp
 
 moc_loginwindow.cpp: windows/loginwindow.h \
 		core/networkmanager.h \
@@ -550,7 +550,7 @@ moc_loginwindow.cpp: windows/loginwindow.h \
 		models/auction.h \
 		moc_predefs.h \
 		/usr/bin/moc
-	/usr/bin/moc $(DEFINES) --include /home/minhp/prj/auction-qt-client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/minhp/prj/auction-qt-client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/15.2.1 -I/usr/include/c++/15.2.1/x86_64-pc-linux-gnu -I/usr/include/c++/15.2.1/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include-fixed -I/usr/include windows/loginwindow.h -o moc_loginwindow.cpp
+	/usr/bin/moc $(DEFINES) --include /home/minhp/prj/auction_system_all/auction-qt-client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/minhp/prj/auction_system_all/auction-qt-client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/15.2.1 -I/usr/include/c++/15.2.1/x86_64-pc-linux-gnu -I/usr/include/c++/15.2.1/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include-fixed -I/usr/include windows/loginwindow.h -o moc_loginwindow.cpp
 
 moc_mainwindow.cpp: windows/mainwindow.h \
 		core/networkmanager.h \
@@ -559,23 +559,23 @@ moc_mainwindow.cpp: windows/mainwindow.h \
 		models/auction.h \
 		moc_predefs.h \
 		/usr/bin/moc
-	/usr/bin/moc $(DEFINES) --include /home/minhp/prj/auction-qt-client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/minhp/prj/auction-qt-client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/15.2.1 -I/usr/include/c++/15.2.1/x86_64-pc-linux-gnu -I/usr/include/c++/15.2.1/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include-fixed -I/usr/include windows/mainwindow.h -o moc_mainwindow.cpp
+	/usr/bin/moc $(DEFINES) --include /home/minhp/prj/auction_system_all/auction-qt-client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/minhp/prj/auction_system_all/auction-qt-client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/15.2.1 -I/usr/include/c++/15.2.1/x86_64-pc-linux-gnu -I/usr/include/c++/15.2.1/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include-fixed -I/usr/include windows/mainwindow.h -o moc_mainwindow.cpp
 
 moc_bidplacedialog.cpp: dialogs/bidplacedialog.h \
 		models/auction.h \
 		moc_predefs.h \
 		/usr/bin/moc
-	/usr/bin/moc $(DEFINES) --include /home/minhp/prj/auction-qt-client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/minhp/prj/auction-qt-client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/15.2.1 -I/usr/include/c++/15.2.1/x86_64-pc-linux-gnu -I/usr/include/c++/15.2.1/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include-fixed -I/usr/include dialogs/bidplacedialog.h -o moc_bidplacedialog.cpp
+	/usr/bin/moc $(DEFINES) --include /home/minhp/prj/auction_system_all/auction-qt-client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/minhp/prj/auction_system_all/auction-qt-client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/15.2.1 -I/usr/include/c++/15.2.1/x86_64-pc-linux-gnu -I/usr/include/c++/15.2.1/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include-fixed -I/usr/include dialogs/bidplacedialog.h -o moc_bidplacedialog.cpp
 
 moc_createroomdialog.cpp: dialogs/createroomdialog.h \
 		moc_predefs.h \
 		/usr/bin/moc
-	/usr/bin/moc $(DEFINES) --include /home/minhp/prj/auction-qt-client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/minhp/prj/auction-qt-client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/15.2.1 -I/usr/include/c++/15.2.1/x86_64-pc-linux-gnu -I/usr/include/c++/15.2.1/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include-fixed -I/usr/include dialogs/createroomdialog.h -o moc_createroomdialog.cpp
+	/usr/bin/moc $(DEFINES) --include /home/minhp/prj/auction_system_all/auction-qt-client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/minhp/prj/auction_system_all/auction-qt-client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/15.2.1 -I/usr/include/c++/15.2.1/x86_64-pc-linux-gnu -I/usr/include/c++/15.2.1/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include-fixed -I/usr/include dialogs/createroomdialog.h -o moc_createroomdialog.cpp
 
 moc_createauctiondialog.cpp: dialogs/createauctiondialog.h \
 		moc_predefs.h \
 		/usr/bin/moc
-	/usr/bin/moc $(DEFINES) --include /home/minhp/prj/auction-qt-client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/minhp/prj/auction-qt-client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/15.2.1 -I/usr/include/c++/15.2.1/x86_64-pc-linux-gnu -I/usr/include/c++/15.2.1/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include-fixed -I/usr/include dialogs/createauctiondialog.h -o moc_createauctiondialog.cpp
+	/usr/bin/moc $(DEFINES) --include /home/minhp/prj/auction_system_all/auction-qt-client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/minhp/prj/auction_system_all/auction-qt-client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/15.2.1 -I/usr/include/c++/15.2.1/x86_64-pc-linux-gnu -I/usr/include/c++/15.2.1/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include-fixed -I/usr/include dialogs/createauctiondialog.h -o moc_createauctiondialog.cpp
 
 compiler_moc_objc_header_make_all:
 compiler_moc_objc_header_clean:
@@ -651,7 +651,6 @@ mainwindow.o: windows/mainwindow.cpp windows/mainwindow.h \
 
 bidplacedialog.o: dialogs/bidplacedialog.cpp dialogs/bidplacedialog.h \
 		models/auction.h \
-		ui_bidplacedialog.h \
 		utils/formatters.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o bidplacedialog.o dialogs/bidplacedialog.cpp
 

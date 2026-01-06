@@ -232,6 +232,7 @@ void handle_leave_room(int client_socket, char *data) {
     send(client_socket, response, strlen(response), 0);
 }
 void handle_create_auction(int client_socket, char *data) {
+   
     int seller_id, room_id, duration;
     double start_price, buy_now_price, min_increment;
     char title[256], description[1024];
@@ -239,7 +240,20 @@ void handle_create_auction(int client_socket, char *data) {
     sscanf(data, "%d|%d|%[^|]|%[^|]|%lf|%lf|%lf|%d",
            &seller_id, &room_id, title, description,
            &start_price, &buy_now_price, &min_increment, &duration);
-    
+    // ✅ FIX: Chỉ chủ phòng mới được tạo auction
+AuctionRoom room;
+if (db_get_room(room_id, &room) != 0) {
+    char response[] = "AUCTION_ERROR|Room not found\n";
+    send(client_socket, response, strlen(response), 0);
+    return;
+}
+if (room.created_by != seller_id) {
+    printf("[ERROR] User %d is not owner of room %d (owner: %d)\n", 
+           seller_id, room_id, room.created_by);
+    char response[] = "AUCTION_ERROR|Only room owner can create auctions\n";
+    send(client_socket, response, strlen(response), 0);
+    return;
+}
     printf("[DEBUG] Create auction: seller=%d, room=%d, title='%s', duration=%d\n",
            seller_id, room_id, title, duration);
     
@@ -379,8 +393,7 @@ void handle_set_queue_mode(int client_socket, char *data) {
         char response[] = "QUEUE_MODE_FAIL|Failed to set mode\n";
         send(client_socket, response, strlen(response), 0);
     }
-}
-void handle_list_auctions(int client_socket, char *data) {
+}void handle_list_auctions(int client_socket, char *data) {
     int room_id;
     sscanf(data, "%d", &room_id);
     
@@ -398,22 +411,33 @@ void handle_list_auctions(int client_socket, char *data) {
             if (time_left < 0) time_left = 0;
         }
         
-        sprintf(temp, "%d;%s;%.2f;%.2f;%.2f;%d;%d;%s|",
-        auctions[i].auction_id,
-        auctions[i].title,
-        auctions[i].current_price,
-        auctions[i].buy_now_price,
-        auctions[i].min_increment,  // ← THÊM DÒNG NÀY
-        time_left,
-        auctions[i].total_bids,
-        auctions[i].status);
+        // ✅ Get seller username
+        User seller;
+        char seller_name[50] = "Unknown";
+        if (db_get_user(auctions[i].seller_id, &seller) == 0) {
+            strncpy(seller_name, seller.username, sizeof(seller_name) - 1);
+            seller_name[sizeof(seller_name) - 1] = '\0';  // Ensure null termination
+        }
+        
+        // ✅ Format: id;title;currentPrice;buyNow;minInc;timeLeft;totalBids;status;sellerId;sellerName
+        sprintf(temp, "%d;%s;%.2f;%.2f;%.2f;%d;%d;%s;%d;%s|",
+            auctions[i].auction_id,
+            auctions[i].title,
+            auctions[i].current_price,
+            auctions[i].buy_now_price,
+            auctions[i].min_increment,
+            time_left,
+            auctions[i].total_bids,
+            auctions[i].status,
+            auctions[i].seller_id,      // ← THÊM
+            seller_name);                // ← THÊM
+        
         strcat(response, temp);
     }
     
     strcat(response, "\n");
     send(client_socket, response, strlen(response), 0);
 }
-
 void handle_view_auction(int client_socket, char *data) {
     int auction_id;
     sscanf(data, "%d", &auction_id);
@@ -668,7 +692,9 @@ void handle_search_auctions(int client_socket, char *data) {
     int auction_id, user_id;
     sscanf(data, "%d|%d", &auction_id, &user_id);
     
-    // Get room_id before buy now (we need it later)
+    // ═══════════════════════════════════════════════════════
+    // STEP 1: Get auction info FIRST
+    // ═══════════════════════════════════════════════════════
     int room_id = 0;
     Auction auction;
     if (db_get_auction_with_room(auction_id, &auction, &room_id) != 0) {
@@ -678,7 +704,20 @@ void handle_search_auctions(int client_socket, char *data) {
         return;
     }
     
-    // Execute buy now
+    // ═══════════════════════════════════════════════════════
+    // STEP 2: Check if seller trying to buy their own auction
+    // ═══════════════════════════════════════════════════════
+    if (auction.seller_id == user_id) {
+        char response[BUFFER_SIZE];
+        sprintf(response, "BUY_NOW_FAIL|Cannot buy your own auction\n");
+        send(client_socket, response, strlen(response), 0);
+        printf("[ERROR] User %d tried to buy their own auction %d\n", user_id, auction_id);
+        return;
+    }
+    
+    // ═══════════════════════════════════════════════════════
+    // STEP 3: Execute buy now
+    // ═══════════════════════════════════════════════════════
     int result = db_buy_now(auction_id, user_id);
     
     char response[BUFFER_SIZE];
@@ -698,7 +737,7 @@ void handle_search_auctions(int client_socket, char *data) {
         printf("[INFO] Buy now: User %d, Auction %d\n", user_id, auction_id);
         
         // ═══════════════════════════════════════════════════════
-        // NEW: START NEXT AUCTION FROM QUEUE
+        // STEP 4: START NEXT AUCTION FROM QUEUE
         // ═══════════════════════════════════════════════════════
         
         printf("[QUEUE] Auction %d ended by buy now, checking queue in room %d...\n", 
@@ -733,7 +772,7 @@ void handle_search_auctions(int client_socket, char *data) {
                 User seller;
                 if (db_get_user(next.seller_id, &seller) == 0) {
                     char start_msg[BUFFER_SIZE];
-                    sprintf(start_msg, "NOTIF_AUCTION_START|%d|%s|%s|%.2f|%.2f|%.2f|%d\n",
+                    sprintf(start_msg, "NOTIF_AUCTION_STARTED|%d|%s|%s|%.2f|%.2f|%.2f|%d\n",
                             next_auction, next.title, seller.username,
                             next.start_price, next.buy_now_price, 
                             next.min_increment, next.duration);
