@@ -538,35 +538,41 @@ void NetworkManager::parseAuctionListResponse(const QStringList& parts) {
     qDebug() << "parseAuctionListResponse - total parts:" << auctionParts.size();
     
     for (const QString& auctionStr : auctionParts) {
-        QStringList fields = auctionStr.split(";");
-        
-        if (fields.size() >= 8) {
-            Auction auction;
-            auction.auctionId = fields.value(0).toInt();
-            auction.title = fields.value(1);
-            auction.currentPrice = fields.value(2).toDouble();
-            auction.buyNowPrice = fields.value(3).toDouble();
-            auction.minIncrement = fields.value(4).toDouble();
-            
-            int timeLeft = fields.value(5).toInt();
-            auction.endTime = QDateTime::currentSecsSinceEpoch() + timeLeft;
-            
-            auction.totalBids = fields.value(6).toInt();
-            auction.status = fields.value(7);
-            
-            // Parse queue info if available
-            if (fields.size() > 8) {
-                auction.queuePosition = fields.value(8).toInt();
-                auction.isQueued = (auction.queuePosition > 0);
-            } else {
-                auction.queuePosition = 0;
-                auction.isQueued = false;
-            }
-            
-            auctions.append(auction);
-        }
-    }
+    QStringList fields = auctionStr.split(";");
     
+    // Server format: id;title;currentPrice;buyNow;minInc;timeLeft;totalBids;status;sellerId;sellerName
+    if (fields.size() >= 10) {
+        Auction auction;
+        auction.auctionId = fields.value(0).toInt();
+        auction.title = fields.value(1);
+        auction.currentPrice = fields.value(2).toDouble();
+        auction.buyNowPrice = fields.value(3).toDouble();
+        auction.minIncrement = fields.value(4).toDouble();
+        
+        int timeLeft = fields.value(5).toInt();
+        auction.endTime = QDateTime::currentSecsSinceEpoch() + timeLeft;
+        
+        auction.totalBids = fields.value(6).toInt();
+        auction.status = fields.value(7);
+        auction.sellerId = fields.value(8).toInt();      // ← THÊM
+        auction.sellerName = fields.value(9);            // ← THÊM
+        
+        qDebug() << "[PARSE] Auction" << auction.auctionId 
+                 << "seller:" << auction.sellerName 
+                 << "(id:" << auction.sellerId << ")";
+        
+        // Parse queue info if available (now at index 10+)
+        if (fields.size() > 10) {
+            auction.queuePosition = fields.value(10).toInt();
+            auction.isQueued = (auction.queuePosition > 0);
+        } else {
+            auction.queuePosition = 0;
+            auction.isQueued = false;
+        }
+        
+        auctions.append(auction);
+    }
+}
     emit auctionListReceived(auctions);
 }
 void NetworkManager::sendSellerHistory(int userId)

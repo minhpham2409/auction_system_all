@@ -1574,55 +1574,60 @@ void MainWindow::onLeftRoom()
     // Fill table
     int row = 0;
     for (const QString& auctionData : auctions) {
-        QStringList fields = auctionData.split(';');
+    QStringList fields = auctionData.split(';');
+    
+    qDebug() << "[MAINWINDOW] Auction fields:" << fields;
+    
+    // Server format: id;title;currentPrice;buyNow;minInc;timeLeft;totalBids;status;sellerId;sellerName
+    if (fields.size() >= 10) {
+        int auctionId = fields[0].toInt();
+        QString title = fields[1];
+        double currentPrice = fields[2].toDouble();
+        double buyNowPrice = fields[3].toDouble();
+        double minIncrement = fields[4].toDouble();  // ← Đã có nhưng không dùng
+        int timeLeft = fields[5].toInt();
+        int totalBids = fields[6].toInt();
+        QString status = fields[7];
+        int sellerId = fields[8].toInt();
+        QString sellerName = fields[9];
         
-        qDebug() << "[MAINWINDOW] Auction fields:" << fields;
+        table->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
         
-        if (fields.size() >= 8) {
-            QString title = fields[1];
-            double currentPrice = fields[2].toDouble();
-            double buyNowPrice = fields[3].toDouble();
-            int timeLeft = fields[4].toInt();
-            int totalBids = fields[5].toInt();
-            QString status = fields[6];
-            QString seller = fields[7];
-            
-            table->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
-            
-            QTableWidgetItem *titleItem = new QTableWidgetItem(title);
-            titleItem->setFont(QFont("Arial", 11, QFont::Bold));
-            table->setItem(row, 1, titleItem);
-            
-            table->setItem(row, 2, new QTableWidgetItem(
-                Formatters::formatCurrency(currentPrice)));
-            
-            QString buyNowText = (buyNowPrice > 0) ? 
-                Formatters::formatCurrency(buyNowPrice) : "-";
-            table->setItem(row, 3, new QTableWidgetItem(buyNowText));
-            
-            QString timeText;
-            if (status == "active") {
-                int hours = timeLeft / 3600;
-                int minutes = (timeLeft % 3600) / 60;
-                int secs = timeLeft % 60;
-                timeText = QString("%1h %2m %3s").arg(hours).arg(minutes).arg(secs);
-            } else {
-                timeText = "Đã kết thúc";
-            }
-            table->setItem(row, 4, new QTableWidgetItem(timeText));
-            
-            table->setItem(row, 5, new QTableWidgetItem(QString::number(totalBids)));
-            
-            QString statusText = (status == "active") ? "🟢 Đang diễn ra" : "⚫ Đã kết thúc";
-            QTableWidgetItem *statusItem = new QTableWidgetItem(statusText);
-            statusItem->setForeground(status == "active" ? QColor("#4CAF50") : QColor("#757575"));
-            table->setItem(row, 6, statusItem);
-            
-            table->setItem(row, 7, new QTableWidgetItem(seller));
-            
-            row++;
+        QTableWidgetItem *titleItem = new QTableWidgetItem(title);
+        titleItem->setFont(QFont("Arial", 11, QFont::Bold));
+        table->setItem(row, 1, titleItem);
+        
+        table->setItem(row, 2, new QTableWidgetItem(
+            Formatters::formatCurrency(currentPrice)));
+        
+        QString buyNowText = (buyNowPrice > 0) ? 
+            Formatters::formatCurrency(buyNowPrice) : "-";
+        table->setItem(row, 3, new QTableWidgetItem(buyNowText));
+        
+        QString timeText;
+        if (status == "active") {
+            int hours = timeLeft / 3600;
+            int minutes = (timeLeft % 3600) / 60;
+            int secs = timeLeft % 60;
+            timeText = QString("%1h %2m %3s").arg(hours).arg(minutes).arg(secs);
+        } else {
+            timeText = "Đã kết thúc";
         }
+        table->setItem(row, 4, new QTableWidgetItem(timeText));
+        
+        table->setItem(row, 5, new QTableWidgetItem(QString::number(totalBids)));
+        
+        QString statusText = (status == "active") ? "🟢 Đang diễn ra" : "⚫ Đã kết thúc";
+        QTableWidgetItem *statusItem = new QTableWidgetItem(statusText);
+        statusItem->setForeground(status == "active" ? QColor("#4CAF50") : QColor("#757575"));
+        table->setItem(row, 6, statusItem);
+        
+        // ✅ Dùng sellerName thay vì fields[7]
+        table->setItem(row, 7, new QTableWidgetItem(sellerName));
+        
+        row++;
     }
+}
     
     table->resizeColumnsToContents();
     table->horizontalHeader()->setStretchLastSection(true);
